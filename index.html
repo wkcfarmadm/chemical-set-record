@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1d4ed8">
+<link rel="icon" href="icon.svg">
+<title>Chemical Set Record</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, "Microsoft YaHei", "PingFang SC", sans-serif; background: #e9edf2; color: #111; }
+  .bar { position: sticky; top: 0; z-index: 5; background: #1d4ed8; color: #fff; padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .bar h1 { font-size: 16px; margin: 0 10px 0 0; }
+  .bar button, .bar label.btn { font-size: 15px; padding: 8px 12px; border: 0; border-radius: 6px; background: #fff; color: #1d4ed8; font-weight: bold; cursor: pointer; }
+  .bar button.on { background: #fde047; color: #111; }
+  .bar button.big { background: #16a34a; color: #fff; }
+  .bar input[type=date] { font-size: 15px; padding: 6px; border-radius: 6px; border: 0; }
+  .bar .sp { flex: 1; }
+  #status { font-size: 13px; opacity: .9; }
+  #warn { display: none; background: #fee2e2; color: #991b1b; padding: 8px 12px; font-weight: bold; }
+  .wrap { padding: 10px 0; overflow-x: auto; }
+  .page { background: #fff; padding: 14px 0; min-width: 1000px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  .head { padding: 0 10px; display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .head .m { font-size: 15px; font-weight: bold; }
+  .head .r { font-size: 13px; color: #444; }
+  :root { --wn: 84px; --wp: 150px; --wd: 150px; }
+  table.grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max(100%, calc(var(--wn) + var(--wp) + 7 * var(--wd))); border-top: 1px solid #222; border-left: 1px solid #222; }
+  .grid th, .grid td { border-right: 1px solid #222; border-bottom: 1px solid #222; padding: 0; vertical-align: top; background: #fff; }
+  /* Name and PLOT stay put; only the day columns slide */
+  .grid .st1 { position: sticky; left: 0; z-index: 3; }
+  .grid .st2 { position: sticky; left: var(--wn); z-index: 2; box-shadow: 2px 0 0 #222; }
+  .grid .st12 { position: sticky; left: 0; z-index: 3; box-shadow: 2px 0 0 #222; }
+  .grid th { background: #f3f4f6; font-size: 12px; padding: 3px 2px; }
+  .grid th .wd { font-size: 14px; color: #1d4ed8; }
+  .grid th.today, .grid td.today { background: #fef9c3; }
+  col.c-name { width: var(--wn); } col.c-plot { width: var(--wp); } col.c-act { width: 86px; }
+  td.name { font-size: 11px; font-weight: bold; text-align: center; vertical-align: middle; padding: 2px; overflow-wrap: anywhere; }
+  td.plot { font-size: 13px; font-weight: bold; padding: 3px 4px; vertical-align: middle; }
+  td.plot .pd { float: right; font-weight: normal; color: #1e3a8a; }
+  tr.grp > td { border-top: 1px solid #000; }
+  .cell { min-height: 34px; padding: 3px 4px; font-size: 14px; color: #1e3a8a; outline: none; white-space: pre-wrap; word-break: break-word; }
+  .pick { cursor: pointer; }
+  .pick:hover, .pick:focus { background: #dbeafe; }
+  .pick b { font-size: 15px; }
+  .pick .sub { font-size: 11px; color: #444; }
+  .pick .alt { color: #b91c1c; font-weight: bold; }
+  .note-cell:focus { background: #dbeafe; }
+  tfoot .cell { min-height: 80px; }
+  tfoot td.lbl { font-size: 12px; font-weight: bold; text-align: center; vertical-align: middle; background: #f3f4f6; }
+  .ed { width: 100%; font-size: 13px; padding: 5px 3px; border: 1px solid #93c5fd; background: #eff6ff; }
+  td.act { text-align: center; vertical-align: middle; white-space: nowrap; }
+  td.act button { font-size: 14px; padding: 4px 6px; margin: 1px; cursor: pointer; }
+  #addRow { display: none; margin: 8px 10px 0; font-size: 15px; padding: 8px 14px; cursor: pointer; }
+  body.editing #addRow { display: inline-block; }
+
+  .ov { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 20; display: none; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 12px; }
+  .ov.show { display: flex; }
+  .dlg { background: #fff; border-radius: 10px; width: 100%; max-width: 720px; padding: 14px; }
+  .dlg.wide { max-width: 980px; }
+  .dlg h2 { margin: 0 0 4px; font-size: 19px; }
+  .dlg h3 { margin: 12px 0 5px; font-size: 14px; color: #1d4ed8; }
+  .dlg .hint { font-size: 13px; color: #555; margin: 2px 0 6px; }
+  .dlg input[type=text], .dlg input[type=number], .dlg input[type=search], .dlg input[type=date], .dlg select { font-size: 17px; padding: 8px; border: 1px solid #888; border-radius: 6px; }
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chips button { font-size: 14px; font-weight: bold; padding: 6px 10px; border-radius: 16px; border: 1px solid #888; background: #f3f4f6; cursor: pointer; }
+  .chips button.on { background: #111; color: #fff; }
+  .sets { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; }
+  .sets button, .two button { font-size: 17px; font-weight: bold; padding: 12px 6px; border: 2px solid #1d4ed8; background: #fff; color: #1d4ed8; border-radius: 8px; cursor: pointer; }
+  .sets button.on, .two button.on { background: #1d4ed8; color: #fff; }
+  .two { display: flex; gap: 6px; } .two button { flex: 1; }
+  .line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .line .grow { flex: 1; min-width: 120px; }
+  .step { font-size: 20px; font-weight: bold; width: 48px; height: 42px; cursor: pointer; }
+  .acts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .acts button, .btn2 { font-size: 16px; padding: 11px 16px; border-radius: 8px; border: 1px solid #888; background: #f3f4f6; cursor: pointer; font-weight: bold; }
+  .acts .go { background: #16a34a; color: #fff; border-color: #16a34a; flex: 1; }
+  .acts .del { color: #b91c1c; }
+  .err { color: #b91c1c; font-weight: bold; font-size: 14px; margin-top: 8px; min-height: 18px; }
+  .rl { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .rl td, .rl th { border-bottom: 1px solid #ddd; padding: 6px 4px; text-align: left; vertical-align: top; }
+  .rl button { font-size: 14px; padding: 5px 9px; cursor: pointer; margin-right: 3px; }
+  .it { display: grid; grid-template-columns: 1fr 90px 76px 40px; gap: 5px; margin-bottom: 5px; }
+  .it input, .it select { min-width: 0; width: 100%; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; border-bottom: 2px solid #111; }
+  .tabs button { font-size: 16px; font-weight: bold; padding: 9px 14px; border-radius: 8px 8px 0 0; border: 2px solid #888; border-bottom: 0; background: #f3f4f6; cursor: pointer; }
+  .tabs button.on { background: #fde047; border-color: #111; }
+  .tabs button.add { border-style: dashed; color: #1d4ed8; }
+  .pick .items { font-size: 10px; color: #555; }
+  .rp { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 6px; }
+  .rp th, .rp td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
+  .rp th { background: #f3f4f6; } .rp td.n { text-align: right; font-weight: bold; white-space: nowrap; }
+  .prev { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 8px; }
+  .prev label { display: block; border: 2px solid #ddd; border-radius: 8px; padding: 6px; cursor: pointer; font-size: 13px; }
+  .prev label.on { border-color: #16a34a; }
+  .prev input { width: 20px; height: 20px; vertical-align: middle; }
+
+  @media (max-width: 700px) {
+    :root { --wn: 54px; --wp: 88px; --wd: 165px; }
+    .wrap { padding: 4px 0; } .page { padding: 6px 0; min-width: 0; }
+    td.name { font-size: 9px; } td.plot { font-size: 11px; padding: 2px; } td.plot .pd { float: none; display: block; font-size: 10px; }
+    .bar h1 { display: none; } .bar button, .bar label.btn { font-size: 13px; padding: 7px 8px; }
+    .ed { font-size: 11px; padding: 3px 1px; }
+  }
+  @page { size: A4 landscape; margin: 6mm; }
+  @media print {
+    body { background: #fff; }
+    .bar, #warn, #info, #addRow, .ov { display: none !important; }
+    :root { --wn: 9%; --wp: 15%; --wd: 0px; }
+    table.grid { width: 100%; } .grid .st1, .grid .st2, .grid .st12 { position: static; box-shadow: none; }
+    .wrap { padding: 0; overflow: visible; }
+    .page { box-shadow: none; padding: 0; min-width: 0; }
+    .grid th.today, .grid td.today { background: none; }
+    .cell { font-size: 10px; min-height: 15px; padding: 1px 2px; }
+    .cell { line-height: 1.05; } .pick b { font-size: 9px; } .pick .sub { font-size: 7px; display: inline; margin-left: 3px; } .pick .items { display: none; }
+    tfoot .cell { min-height: 40px !important; }
+    tfoot .cell { min-height: 55px; }
+    td.plot { font-size: 10px; padding: 1px 3px; }
+    td.name { font-size: 9px; }
+    .grid th { font-size: 10px; padding: 1px; } .grid th .wd { font-size: 11px; }
+    .head { margin-bottom: 3px; }
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>Chemical Set Record</h1>
+  <button id="prev">◀ 上一页</button>
+  <button id="today">本周</button>
+  <button id="next">下一页 ▶</button>
+  <input type="date" id="pick" title="跳去日期">
+  <button id="stk" class="big">🏷 打印整天贴纸</button>
+  <span class="sp"></span>
+  <span id="status"></span>
+  <button id="rep">📊 月报</button>
+  <button id="rec">📋 配方表</button>
+  <button id="edit">✏️ 改工人/地块</button>
+  <button id="print">🖨 打印这页</button>
+  <button id="exp">⬇ 备份</button>
+  <label class="btn">⬆ 还原<input type="file" id="imp" accept=".json,application/json" hidden></label>
+</div>
+<div id="warn">⚠ 这个浏览器不能保存资料，关掉后会不见。请用 Chrome 或 Edge 打开。</div>
+<div id="info" style="display:none;background:#dcfce7;color:#14532d;padding:10px 12px;font-size:14px;white-space:pre-wrap"></div>
+<div class="wrap" id="wrap">
+  <div class="page">
+    <div class="head"><div class="m" id="month"></div><div class="r" id="range"></div></div>
+    <table id="tbl" class="grid"></table>
+    <button id="addRow">＋ 加一行</button>
+  </div>
+</div>
+
+<!-- 选药水 -->
+<div class="ov" id="ovPick"><div class="dlg">
+  <h2 id="pkTitle"></h2>
+  <p class="hint">一个格子可以有多过一个药水组合（例如 3-3 和 7-6）。每个组合印一张贴纸。</p>
+  <div class="tabs" id="pkTabs"></div>
+  <h3>1 · Chemical set 药水组合</h3>
+  <div class="line" style="margin-bottom:6px"><input type="search" id="pkQ" class="grow" placeholder="找配方…"></div>
+  <div class="chips" id="pkGrp"></div>
+  <div class="sets" id="pkSets"></div>
+  <h3>2 · 里面的药（每 200 L 水的份量）· 可以换药、改份量</h3>
+  <div id="pkItems"></div><datalist id="chemList"></datalist>
+  <h3>3 · Worker 打药的人</h3>
+  <div class="line"><input type="text" id="pkEmp" class="grow" list="empList"><datalist id="empList"></datalist></div>
+  <h3>4 · Water 水量 (L)</h3>
+  <div class="line"><button class="step" id="pkMinus">−</button><input type="number" id="pkWater" min="0" step="50" style="width:120px;text-align:center"><button class="step" id="pkPlus">＋</button><span class="hint" id="pkWHint"></span></div>
+  <div id="pkTotal" style="font-weight:bold;margin-top:6px"></div>
+  <h3>5 · Size 菜的大小</h3>
+  <div class="two" id="pkSize"><button data-z="LARGE">LARGE 大</button><button data-z="SMALL">SMALL 小</button></div>
+  <h3>6 · Note 备注（可以不填，会印在贴纸上）</h3>
+  <div class="line"><input type="text" id="pkNote" class="grow"></div>
+  <div class="err" id="pkErr"></div>
+  <div class="line" style="margin-top:12px;padding:8px;background:#fef9c3;border-radius:8px"><b>➡ 延期</b><span>工人休息？把这格移去：</span><input type="date" id="pkTo"><button class="btn2" id="pkMove">移过去</button></div>
+  <div class="acts"><button class="go" id="pkSave">✔ 保存</button><button class="del" id="pkDel">删除这个组合</button><button class="del" id="pkClear">清空这格</button><button id="pkCancel">取消</button></div>
+</div></div>
+
+<!-- 配方表 -->
+<div class="ov" id="ovRec"><div class="dlg">
+  <h2>📋 配方表 Recipes</h2>
+  <p class="hint">份量是「每 200 L 水」的份量。最上面那个是永远空的组合，用来记录临时试的新药，填格子的时候才写药。</p>
+  <div id="recList"></div>
+  <div id="recEd"></div>
+  <div class="acts"><button id="recNew">＋ 新配方</button><button id="recClose">关闭</button></div>
+</div></div>
+
+<!-- 月报 -->
+<div class="ov" id="ovRep"><div class="dlg">
+  <h2>📊 月报 · 这个月用了多少药水</h2>
+  <div class="line"><span>月份：</span><input type="month" id="rpMonth"></div>
+  <p class="hint">用量 = 每 200 L 的份量 × 实际水量 ÷ 200。只算记录页里已经填的格子。</p>
+  <div id="rpBody"></div>
+  <div class="acts"><button id="rpClose">关闭</button></div>
+</div></div>
+
+<!-- 整天贴纸 -->
+<div class="ov" id="ovStk"><div class="dlg wide">
+  <h2>🏷 打印整天贴纸 · 100 × 100 mm</h2>
+  <div class="line"><span>日期：</span><input type="date" id="skDate"><button class="btn2" id="skAll">全选</button><button class="btn2" id="skNone">全不选</button></div>
+  <p class="hint" id="skInfo"></p>
+  <div class="prev" id="skPrev"></div>
+  <div class="err" id="skErr"></div>
+  <div class="acts"><button class="go" id="skPrint">🖨 打印</button><button id="skClose">关闭</button></div>
+  <p class="hint">打印窗口里请选：USB 贴纸打印机 · 纸张 100 × 100 mm · 边距「无」· 缩放 100%。</p>
+</div></div>
+
+<script>
+(function () {
+  var KEY = 'chemical_set_record_v1';
+  var POS = null;
+  var DEFAULT_ROWS = [];
+  var WD = ['Mon 一', 'Tue 二', 'Wed 三', 'Thu 四', 'Fri 五', 'Sat 六', 'Sun 日'];
+  var MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  var UNITS = ['ml', 'L', 'g', 'kg'];
+  var BASIS = 200, DEF_WATER = 200, BLANK_ID = 'blank_s1';
+
+  var canSave = true, editing = false, weekStart = mondayOf(new Date());
+  var data = load();
+  function $(id) { return document.getElementById(id); }
+
+  function freshData() {
+    return fix({
+      nextId: DEFAULT_ROWS.length + 1,
+      rows: DEFAULT_ROWS.map(function (r, i) { return { id: 'r' + (i + 1), name: r[0], plot: r[1], date: r[2] }; }),
+      cells: {}, notes: {}, recipes: []
+    });
+  }
+  function valid(d) { return d && Array.isArray(d.rows) && d.cells && typeof d.cells === 'object'; }
+  function fix(d) {
+    d.notes = d.notes || {}; d.recipes = d.recipes || []; d.chems = d.chems || []; d.emps = d.emps || []; d.nextId = d.nextId || d.rows.length + 1000;
+    // every cell is a list of sets; older versions stored free text or a single set
+    Object.keys(d.cells).forEach(function (k) {
+      var c = d.cells[k];
+      if (typeof c === 'string') d.cells[k] = [{ note: c }];
+      else if (!Array.isArray(c)) d.cells[k] = [c];
+    });
+    // S1 = the always-empty set for trying new chemicals
+    if (!d.recipes.some(function (r) { return r.id === BLANK_ID; }))
+      d.recipes.unshift({ id: BLANK_ID, name: d.recipes.some(function (r) { return r.name.toLowerCase() === 's1'; }) ? 'S1 (空)' : 'S1', items: [] });
+    return d;
+  }
+  function load() {
+    try {
+      var s = localStorage.getItem(KEY);
+      if (s) { var d = JSON.parse(s); if (valid(d)) return fix(d); }
+    } catch (e) { canSave = false; }
+    return freshData();
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); canSave = true; flash('已保存 ✓'); }
+    catch (e) { canSave = false; }
+    $('warn').style.display = canSave ? 'none' : 'block';
+  }
+  var ft;
+  function flash(t) { var s = $('status'); s.textContent = t; clearTimeout(ft); ft = setTimeout(function () { s.textContent = ''; }, 1500); }
+  function uid(p) { return p + (data.nextId++); }
+
+  function mondayOf(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+  function addDays(d, n) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() + n); return x; }
+  function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function dash(v) { return v ? esc(v) : '—'; }
+  function show(id, on) { $(id).classList.toggle('show', on); }
+  function entriesOf(k) { return data.cells[k] || []; }
+  function nf(n) { return String(Math.round(n * 100) / 100); }
+  function itemsText(items) { return items.map(function (i) { return i.name + ' ' + i.qty + ' ' + i.unit; }).join(' + '); }
+
+  // ================= import from Chemical POS (Google Sheet snapshot) =================
+  function normPlot(p) { return String(p).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+  var PLOT_ALIAS = { 'A5': 'A5WKP', 'A6RO': 'A61RO', 'A6GC': 'A62GC' };   // POS plot name -> name used on the paper sheet
+  function coreName(n) { return String(n || '').toUpperCase().replace(/^[A-Z]\.\s*/, '').trim(); }
+  function sameEmp(emp, rowName) { var e = coreName(emp); return String(rowName).split('/').some(function (x) { return coreName(x) === e; }); }
+  function chemOf(name) { var k = String(name).trim().toLowerCase(); return data.chems.filter(function (c) { return c.name.toLowerCase() === k; })[0]; }
+  function importPos() {
+    if (!POS || data.posStamp === POS.stamp) return;
+    var st = { chems: 0, recipes: 0, orders: 0, rows: [] };
+    POS.chems.forEach(function (c) { var o = chemOf(c.name); if (o) { o.type = c.type; o.cap = c.cap; o.unit = c.unit; o.base = c.base; } else { data.chems.push(c); st.chems++; } });
+    POS.emps.forEach(function (e) { if (data.emps.indexOf(e) < 0) data.emps.push(e); });
+    // the always-empty set must not share a name with a real POS recipe
+    var blank = data.recipes.filter(function (r) { return r.id === BLANK_ID; })[0];
+    if (blank && POS.recipes.some(function (r) { return r.code.toLowerCase() === blank.name.toLowerCase(); })) blank.name = 'NEW 新药';
+    POS.recipes.forEach(function (r) {
+      var o = data.recipes.filter(function (x) { return x.id !== BLANK_ID && x.name.toLowerCase() === r.code.toLowerCase(); })[0];
+      if (!o) { o = { id: 'pos_' + r.code, name: r.code }; data.recipes.push(o); st.recipes++; }
+      o.group = r.group; o.items = r.items.map(function (i) { return { name: i.name, qty: i.qty, unit: i.unit }; });
+    });
+    var have = {};
+    Object.keys(data.cells).forEach(function (k) { data.cells[k].forEach(function (e) { if (e.posId) have[e.posId] = 1; }); });
+    var dayWater = {};
+    POS.orders.forEach(function (o) {
+      var n = normPlot(o.plot), want = PLOT_ALIAS[n] || n;
+      var row = data.rows.filter(function (r) { return normPlot(r.plot) === want || normPlot(r.plot) === n; })[0];
+      if (!row) {
+        // plot exists in the POS but not on this sheet: add a row under the worker who mixed for it most
+        var cnt = {}, best = o.emp; POS.orders.forEach(function (x) { if (x.plot === o.plot) { cnt[x.emp] = (cnt[x.emp] || 0) + 1; if (cnt[x.emp] > (cnt[best] || 0)) best = x.emp; } });
+        row = { id: uidOn(data, 'r'), name: best, plot: o.plot, date: '' };
+        var at = -1; data.rows.forEach(function (r, i) { if (sameEmp(best, r.name)) at = i; });
+        if (at >= 0) { row.name = data.rows[at].name; data.rows.splice(at + 1, 0, row); } else data.rows.push(row);
+        st.rows.push(o.plot);
+      }
+      var dk = o.date + '|' + row.id; dayWater[dk] = (dayWater[dk] || 0) + o.water;
+      if (have[o.id]) return;
+      var rec = data.recipes.filter(function (x) { return x.name.toLowerCase() === o.code.toLowerCase(); })[0];
+      var e = { recipe: { id: rec ? rec.id : 'pos_' + o.code, name: o.code, basis: o.basis, items: o.items.map(function (i) { return { name: i.name, qty: i.qty, unit: i.unit }; }) },
+        emp: o.emp, water: o.water, size: o.size, note: o.note, printed: 1, posId: o.id };
+      if (o.mod) e.changed = true;
+      (data.cells[dk] || (data.cells[dk] = [])).push(e); st.orders++;
+    });
+    // plot total water = the day total used most often in the POS (only where none was set yet)
+    data.rows.forEach(function (row) {
+      if (row.water) return;
+      var c = {}, best = 0; Object.keys(dayWater).forEach(function (k) { if (k.split('|')[1] === row.id) { var w = dayWater[k]; c[w] = (c[w] || 0) + 1; if (c[w] > (c[best] || 0) || (c[w] === c[best] && w > best)) best = w; } });
+      if (best) row.water = best;
+    });
+    data.posStamp = POS.stamp;
+    return st;
+  }
+  function uidOn(d, p) { return p + (d.nextId++); }
+  var posResult = importPos();
+  if (posResult) {
+    save();
+    var box = $('info'), x = el('button', '', '知道了 ✕'); x.style.cssText = 'float:right;font-size:14px;padding:4px 10px;cursor:pointer';
+    x.addEventListener('click', function () { box.style.display = 'none'; });
+    box.appendChild(x);
+    box.appendChild(document.createTextNode('✔ 已经从 Chemical POS（' + POS.stamp + ' 的资料）搬进来：' + posResult.chems + ' 种药水 · ' + posResult.recipes + ' 个配方 · ' + posResult.orders + ' 笔打药记录。' +
+      (posResult.rows.length ? '\n这些地块在记录表里找不到，已经自动加一行：' + posResult.rows.join('、') : '')));
+    box.style.display = 'block';
+  }
+
+  // ================= weekly page =================
+  function render() {
+    var days = [], i, todayIso = iso(new Date());
+    for (i = 0; i < 7; i++) days.push(addDays(weekStart, i));
+    var last = days[6];
+    $('month').textContent = 'MONTH: ' + MON[weekStart.getMonth()] +
+      (last.getMonth() !== weekStart.getMonth() ? ' / ' + MON[last.getMonth()] : '') + ' ' + last.getFullYear();
+    $('range').textContent = weekStart.getDate() + '/' + (weekStart.getMonth() + 1) + ' – ' + last.getDate() + '/' + (last.getMonth() + 1);
+    $('pick').value = iso(weekStart);
+
+    var t = $('tbl'); t.innerHTML = '';
+    var cg = el('colgroup');
+    cg.appendChild(el('col', 'c-name')); cg.appendChild(el('col', 'c-plot'));
+    for (i = 0; i < 7; i++) cg.appendChild(el('col'));
+    if (editing) cg.appendChild(el('col', 'c-act'));
+    t.appendChild(cg);
+
+    var th = el('thead'), hr = el('tr');
+    hr.appendChild(el('th', 'st1', 'Name')); hr.appendChild(el('th', 'st2', 'PLOT'));
+    days.forEach(function (d, k) {
+      var h = el('th', iso(d) === todayIso ? 'today' : '');
+      h.appendChild(el('div', 'wd', WD[k])); h.appendChild(el('div', '', String(d.getDate())));
+      hr.appendChild(h);
+    });
+    if (editing) hr.appendChild(el('th', '', ''));
+    th.appendChild(hr); t.appendChild(th);
+
+    var tb = el('tbody');
+    data.rows.forEach(function (row, idx) {
+      var tr = el('tr'), first = idx === 0 || data.rows[idx - 1].name !== row.name;
+      if (first) tr.className = 'grp';
+      if (editing) {
+        var n = el('td', 'st1'), ni = el('input', 'ed'), wi = el('input', 'ed');
+        ni.value = row.name.trim(); ni.placeholder = '工人';
+        wi.type = 'number'; wi.value = row.water || ''; wi.placeholder = '总用水量 L (' + DEF_WATER + ')';
+        ni.addEventListener('change', function () { row.name = ni.value.trim().toUpperCase(); save(); });
+        wi.addEventListener('change', function () { var v = +wi.value; if (v > 0) row.water = v; else delete row.water; save(); });
+        n.appendChild(ni); n.appendChild(wi); tr.appendChild(n);
+        var p = el('td', 'st2'), pi = el('input', 'ed'), di = el('input', 'ed');
+        pi.value = row.plot; pi.placeholder = '地块'; di.value = row.date; di.placeholder = '种植日期 例 27/10';
+        pi.addEventListener('change', function () { row.plot = pi.value.trim(); save(); });
+        di.addEventListener('change', function () { row.date = di.value.trim(); save(); });
+        p.appendChild(pi); p.appendChild(di); tr.appendChild(p);
+      } else {
+        if (first) {
+          var span = 1; while (idx + span < data.rows.length && data.rows[idx + span].name === row.name) span++;
+          var nt = el('td', 'name st1', row.name.trim()); nt.rowSpan = span; tr.appendChild(nt);
+        }
+        var pt = el('td', 'plot st2'); pt.appendChild(el('span', 'pd', row.date)); pt.appendChild(document.createTextNode(row.plot)); tr.appendChild(pt);
+      }
+      days.forEach(function (d) {
+        var k = iso(d) + '|' + row.id, td = el('td', iso(d) === todayIso ? 'today' : '');
+        var c = el('div', 'cell pick'); c.tabIndex = 0; c.dataset.k = k;
+        fillCell(c, entriesOf(k), row);
+        function open() { openPicker(iso(d), row); }
+        c.addEventListener('click', open);
+        c.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); open(); } });
+        td.appendChild(c); tr.appendChild(td);
+      });
+      if (editing) {
+        var a = el('td', 'act');
+        [['↑', -1], ['↓', 1]].forEach(function (m) {
+          var b = el('button', '', m[0]);
+          b.addEventListener('click', function () {
+            var j = idx + m[1]; if (j < 0 || j >= data.rows.length) return;
+            data.rows.splice(idx, 1); data.rows.splice(j, 0, row); save(); render();
+          });
+          a.appendChild(b);
+        });
+        var x = el('button', '', '✕');
+        x.addEventListener('click', function () {
+          if (!confirm('删除这一行？ ' + row.name.trim() + ' ' + row.plot + '\n（这一行以前的记录也会一起删除）')) return;
+          data.rows.splice(idx, 1);
+          Object.keys(data.cells).forEach(function (k) { if (k.split('|')[1] === row.id) delete data.cells[k]; });
+          save(); render();
+        });
+        a.appendChild(x); tr.appendChild(a);
+      }
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+
+    var tf = el('tfoot'), fr = el('tr'), lbl = el('td', 'lbl st12', '备注'); lbl.colSpan = 2; fr.appendChild(lbl);
+    days.forEach(function (d) {
+      var k = iso(d), td = el('td', k === todayIso ? 'today' : '');
+      var c = el('div', 'cell note-cell', data.notes[k] || ''); c.contentEditable = 'true'; c.spellcheck = false;
+      c.addEventListener('input', function () { var v = c.innerText.replace(/\n+$/, ''); if (v.trim()) data.notes[k] = v; else delete data.notes[k]; save(); });
+      c.addEventListener('paste', function (e) { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text')); });
+      td.appendChild(c); fr.appendChild(td);
+    });
+    if (editing) fr.appendChild(el('td'));
+    tf.appendChild(fr); t.appendChild(tf);
+    var tc = t.querySelector('th.today'), wr = $('wrap');
+    if (tc && wr.scrollWidth > wr.clientWidth && lastScrollWeek !== iso(weekStart)) { lastScrollWeek = iso(weekStart); wr.scrollLeft = tc.offsetLeft - t.querySelector('th.st2').offsetLeft - t.querySelector('th.st2').offsetWidth; }
+  }
+  var lastScrollWeek = '';
+
+  function fillCell(c, list, row) {
+    c.textContent = '';
+    if (!list.length) return;
+    var sets = list.filter(function (e) { return e.recipe; });
+    list.forEach(function (e, i) {
+      if (i) c.appendChild(document.createTextNode(' / '));
+      if (e.recipe) c.appendChild(el('b', '', e.recipe.name + (e.changed ? '*' : '')));
+      if (e.note) c.appendChild(document.createTextNode((e.recipe ? ' ' : '') + e.note));
+    });
+    // show what is inside when it is not the normal recipe (trial set, or chemicals swapped)
+    sets.forEach(function (e) { if (e.recipe.blank || e.changed) c.appendChild(el('div', 'items', e.recipe.name + ': ' + itemsText(e.recipe.items))); });
+    if (sets.length) {
+      var uniq = function (a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); };
+      var s = el('div', 'sub');
+      s.appendChild(document.createTextNode(uniq(sets.map(function (e) { return e.water + ' L'; })).join(' / ') + ' · ' + uniq(sets.map(function (e) { return e.size === 'SMALL' ? 'S' : 'L'; })).join('/')));
+      var alt = uniq(sets.map(function (e) { return e.emp; })).filter(function (n) { return n && !sameEmp(n, row.name); });
+      if (alt.length) { s.appendChild(document.createTextNode(' · ')); s.appendChild(el('span', 'alt', alt.join('/'))); }
+      if (sets.every(function (e) { return e.printed; })) s.appendChild(document.createTextNode(' · 🖨'));
+      c.appendChild(s);
+    }
+  }
+
+  // ================= picker =================
+  var pk = null;
+  function cur() { return pk.list[pk.i]; }
+  function newEntry() { var f = pk.list[0], row = pk.row; return { recipe: null, fresh: true, emp: f ? f.emp : row.name.trim(), water: total(), size: f ? f.size : null, note: '' }; }
+  // ---- plot water: the plot's total is shared by the sets in the cell
+  function total() { return pk.row.water || DEF_WATER; }
+  function splitters() { return pk.list.filter(function (e) { return e.recipe || e.fresh; }); }
+  // equal split in multiples of 50 L; the last set takes what is left so the total stays exact
+  function resplit() {
+    var s = splitters(), n = s.length, T = total(); if (!n) return;
+    var base = n === 1 ? T : Math.round(T / n / 50) * 50;
+    s.forEach(function (e, i) { e.water = i < n - 1 ? base : Math.max(0, T - base * (n - 1)); });
+  }
+  // the set being edited was changed by hand: another set absorbs the difference
+  function rebalance() {
+    var s = splitters(), c = cur(); if (s.indexOf(c) < 0 || s.length < 2) return;
+    var others = s.filter(function (e) { return e !== c; }), last = others[others.length - 1], sum = 0;
+    s.forEach(function (e) { if (e !== last) sum += (+e.water || 0); });
+    last.water = Math.max(0, total() - sum);
+  }
+  function drawTotal() {
+    var sum = 0, s = splitters(); s.forEach(function (e) { sum += (+e.water || 0); });
+    var ok = sum === total(), t = $('pkTotal');
+    t.textContent = pk.row.plot + ' 总水量 ' + nf(total()) + ' L · 已分 ' + nf(sum) + ' L' + (s.length > 1 ? '（' + s.map(function (e) { return nf(+e.water || 0); }).join(' + ') + '）' : '') + (ok ? ' ✓' : sum > total() ? ' ⚠ 多了 ' + nf(sum - total()) + ' L' : ' ⚠ 少了 ' + nf(total() - sum) + ' L');
+    t.style.color = ok ? '#15803d' : '#b91c1c';
+  }
+  function openPicker(dateIso, row) {
+    var k = dateIso + '|' + row.id;
+    pk = { k: k, row: row, date: dateIso, i: 0, list: JSON.parse(JSON.stringify(entriesOf(k))) };
+    pk.list.forEach(function (e) { if (!e.recipe) { e.emp = row.name.trim(); e.water = row.water || DEF_WATER; e.size = null; } });
+    if (!pk.list.length) pk.list.push(newEntry());
+    $('pkTitle').textContent = row.plot + ' · ' + dateIso;
+    var dp = dateIso.split('-'); $('pkTo').value = iso(addDays(new Date(+dp[0], +dp[1] - 1, +dp[2]), 1));
+    $('pkWHint').textContent = '可以改。有两个组合时，改一个，另一个自动跟着变';
+    var names = {}; data.rows.forEach(function (r) { r.name.trim().split('/').concat([r.name.trim()]).forEach(function (n) { if (n.trim()) names[n.trim()] = 1; }); });
+    var chems = {};
+    data.recipes.forEach(function (r) { r.items.forEach(function (i) { chems[i.name] = 1; }); });
+    Object.keys(data.cells).forEach(function (c) { data.cells[c].forEach(function (x) { if (x.emp) names[x.emp] = 1; if (x.recipe) x.recipe.items.forEach(function (i) { chems[i.name] = 1; }); }); });
+    data.emps.forEach(function (n) { names[n] = 1; }); data.chems.forEach(function (c) { chems[c.name] = 1; });
+    fillList('empList', names); fillList('chemList', chems);
+    loadForm(); show('ovPick', true);
+  }
+  function fillList(id, obj) { var dl = $(id); dl.innerHTML = ''; Object.keys(obj).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); }); }
+  function loadForm() {
+    var e = cur();
+    $('pkQ').value = ''; $('pkEmp').value = e.emp || ''; $('pkWater').value = e.water || ''; $('pkNote').value = e.note || ''; $('pkErr').textContent = '';
+    drawTabs(); drawSets(); drawItems(); drawSize(); drawTotal();
+  }
+  function drawTabs() {
+    var box = $('pkTabs'); box.innerHTML = '';
+    pk.list.forEach(function (e, i) {
+      var b = el('button', i === pk.i ? 'on' : '', (e.recipe ? e.recipe.name : '（未选）') + (e.recipe || e.fresh ? ' · ' + nf(+e.water || 0) + ' L' : ''));
+      b.addEventListener('click', function () { pk.i = i; loadForm(); });
+      box.appendChild(b);
+    });
+    var a = el('button', 'add', '＋ 再加一个组合'); a.id = 'pkAdd';
+    a.addEventListener('click', function () { pk.list.push(newEntry()); resplit(); pk.i = pk.list.length - 1; loadForm(); });
+    box.appendChild(a);
+  }
+  function snapOf(r) {
+    var s = { id: r.id, name: r.name, basis: BASIS, items: r.items.map(function (i) { return { name: i.name, qty: i.qty, unit: i.unit }; }) };
+    if (!r.items.length) s.blank = true;
+    return s;
+  }
+  function drawSets() {
+    var e = cur(), q = $('pkQ').value.trim().toLowerCase(), box = $('pkSets'); box.innerHTML = '';
+    var groups = []; data.recipes.forEach(function (r) { if (r.group && groups.indexOf(r.group) < 0) groups.push(r.group); });
+    groups.sort(function (a, b) { return (parseInt(a, 10) || 999) - (parseInt(b, 10) || 999); });
+    var gb = $('pkGrp'); gb.innerHTML = '';
+    if (groups.length) [''].concat(groups).forEach(function (g) {
+      var b = el('button', (pk.grp || '') === g ? 'on' : '', g || '全部');
+      b.addEventListener('click', function () { pk.grp = g; drawSets(); }); gb.appendChild(b);
+    });
+    var list = data.recipes.filter(function (r) { return (!q || r.name.toLowerCase().indexOf(q) >= 0) && (!pk.grp || r.group === pk.grp || !r.items.length); });
+    // a saved set whose recipe was deleted later still shows as selected
+    if (e.recipe && !data.recipes.some(function (r) { return r.id === e.recipe.id; })) list.unshift(e.recipe);
+    if (!list.length) { box.appendChild(el('div', 'hint', '找不到。')); return; }
+    list.forEach(function (r) {
+      var b = el('button', e.recipe && r.id === e.recipe.id ? 'on' : '', r.name);
+      b.addEventListener('click', function () {
+        if (e.recipe && e.recipe.id === r.id) return;
+        var counted = e.recipe || e.fresh;
+        e.recipe = snapOf(r); delete e.printed; delete e.changed;
+        if (!counted) { resplit(); $('pkWater').value = e.water; }
+        drawTabs(); drawSets(); drawItems(); drawTotal();
+      });
+      box.appendChild(b);
+    });
+  }
+  function drawItems() {
+    var e = cur(), box = $('pkItems'); box.innerHTML = '';
+    if (!e.recipe) { box.appendChild(el('div', 'hint', '先选上面的药水组合。')); return; }
+    if (e.recipe.blank && !e.recipe.items.length) box.appendChild(el('div', 'hint', '这是空的组合。请按「＋ 加药」写这次试的新药。'));
+    e.recipe.items.forEach(function (it, i) {
+      var row = el('div', 'it'), a = el('input'), q = el('input'), u = el('select'), x = el('button', '', '✕');
+      a.type = 'text'; a.placeholder = '药水名字'; a.value = it.name; a.setAttribute('list', 'chemList'); a.addEventListener('input', function () { it.name = a.value; var c = chemOf(a.value); if (c && c.base && u.value !== c.base && !(c.base === 'ml' && u.value === 'L') && !(c.base === 'g' && u.value === 'kg')) { u.value = c.base; it.unit = c.base; } });
+      q.type = 'number'; q.placeholder = '份量'; q.value = it.qty; q.min = 0; q.step = 'any'; q.addEventListener('input', function () { it.qty = q.value; });
+      UNITS.forEach(function (un) { var o = el('option', '', un); o.value = un; u.appendChild(o); }); u.value = it.unit; u.addEventListener('change', function () { it.unit = u.value; });
+      x.addEventListener('click', function () { e.recipe.items.splice(i, 1); drawItems(); });
+      row.appendChild(a); row.appendChild(q); row.appendChild(u); row.appendChild(x); box.appendChild(row);
+    });
+    var add = el('button', 'btn2', '＋ 加药'); add.id = 'pkAddItem';
+    add.addEventListener('click', function () { e.recipe.items.push({ name: '', qty: '', unit: 'ml' }); drawItems(); var ins = box.querySelectorAll('.it input[type=text]'); ins[ins.length - 1].focus(); });
+    box.appendChild(add);
+  }
+  function drawSize() { var z = cur().size; Array.prototype.forEach.call($('pkSize').children, function (b) { b.classList.toggle('on', b.dataset.z === z); }); }
+  $('pkQ').addEventListener('input', drawSets);
+  $('pkEmp').addEventListener('input', function () { cur().emp = $('pkEmp').value; });
+  $('pkWater').addEventListener('input', function () { cur().water = $('pkWater').value; rebalance(); drawTabs(); drawTotal(); });
+  $('pkNote').addEventListener('input', function () { cur().note = $('pkNote').value; });
+  $('pkSize').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; cur().size = b.dataset.z; drawSize(); });
+  function stepWater(n) { var v = Math.max(0, (+$('pkWater').value || 0) + n); $('pkWater').value = v; cur().water = v; rebalance(); drawTabs(); drawTotal(); }
+  $('pkMinus').addEventListener('click', function () { stepWater(-50); });
+  $('pkPlus').addEventListener('click', function () { stepWater(50); });
+  function sameItems(a, b) { var f = function (l) { return JSON.stringify(l.map(function (i) { return [i.name.toLowerCase(), +i.qty, i.unit]; })); }; return f(a) === f(b); }
+  function collect() {
+    var out = [], bad = -1, err = '';
+    pk.list.forEach(function (e, idx) {
+      if (bad >= 0) return;
+      var note = (e.note || '').trim();
+      if (!e.recipe) { if (note) out.push({ note: note }); return; }
+      var items = e.recipe.items.filter(function (i) { return String(i.name).trim() || String(i.qty).trim(); });
+      var emp = (e.emp || '').trim().toUpperCase(), water = +e.water;
+      if (!items.length) err = '「' + e.recipe.name + '」里面还没有药。请按「＋ 加药」。';
+      else if (items.some(function (i) { return !String(i.name).trim() || !(+i.qty > 0); })) err = '每种药都要有名字和大过 0 的份量。';
+      else if (!emp) err = '请填打药的人。';
+      else if (!(water > 0)) err = '请填水量。';
+      else if (!e.size) err = '请选 LARGE 或 SMALL。';
+      if (err) { bad = idx; return; }
+      var snap = { id: e.recipe.id, name: e.recipe.name, basis: e.recipe.basis || BASIS, items: items.map(function (i) { return { name: String(i.name).trim(), qty: +i.qty, unit: i.unit }; }) };
+      if (e.recipe.blank) snap.blank = true;
+      var o = { recipe: snap, emp: emp, water: water, size: e.size, note: note };
+      var r = data.recipes.filter(function (x) { return x.id === snap.id; })[0];
+      if (!snap.blank && r && r.items.length && !sameItems(r.items, snap.items)) o.changed = true;
+      else if (!r && e.changed) o.changed = true;
+      if (e.printed) o.printed = e.printed;
+      out.push(o);
+    });
+    if (bad >= 0) { pk.i = bad; loadForm(); $('pkErr').textContent = err; return null; }
+    return out;
+  }
+  $('pkSave').addEventListener('click', function () {
+    var out = collect(); if (!out) return;
+    if (out.length) data.cells[pk.k] = out; else delete data.cells[pk.k];
+    save(); show('ovPick', false); render();
+  });
+  // postpone: move this cell's sets to another day (same plot), leave an arrow note behind like on the paper sheet
+  $('pkMove').addEventListener('click', function () {
+    var out = collect(); if (!out) return;
+    var sets = out.filter(function (e) { return e.recipe; }), to = $('pkTo').value;
+    if (!sets.length) { $('pkErr').textContent = '这格还没有药水组合可以移。'; return; }
+    if (!to || to === pk.date) { $('pkErr').textContent = '请选另一天的日期。'; return; }
+    var tk = to + '|' + pk.row.id, p = to.split('-');
+    sets.forEach(function (e) { delete e.printed; });   // sticker date changes, so it must be printed again
+    data.cells[tk] = (data.cells[tk] || []).concat(sets);
+    data.cells[pk.k] = out.filter(function (e) { return !e.recipe; }).concat([{ note: sets.map(function (e) { return e.recipe.name + (e.changed ? '*' : ''); }).join(' / ') + ' → 延到 ' + (+p[2]) + '/' + (+p[1]) }]);
+    save(); show('ovPick', false); render(); flash('已移去 ' + (+p[2]) + '/' + (+p[1]));
+  });
+  $('pkDel').addEventListener('click', function () { pk.list.splice(pk.i, 1); if (!pk.list.length) pk.list.push(newEntry()); resplit(); pk.i = Math.min(pk.i, pk.list.length - 1); loadForm(); });
+  $('pkClear').addEventListener('click', function () { delete data.cells[pk.k]; save(); show('ovPick', false); render(); });
+  $('pkCancel').addEventListener('click', function () { show('ovPick', false); });
+
+  // ================= recipes =================
+  var ed = null;
+  function drawRecipes() {
+    var box = $('recList'); box.innerHTML = '';
+    {
+      var t = el('table', 'rl');
+      data.recipes.forEach(function (r) {
+        var tr = el('tr');
+        tr.appendChild(el('td', '', r.name + (r.group ? '  (' + r.group + ')' : ''))).style.fontWeight = 'bold';
+        tr.appendChild(el('td', '', r.items.length ? itemsText(r.items) : '（空的组合 · 填格子的时候才写药）'));
+        if (r.id === BLANK_ID) { tr.appendChild(el('td', '', '固定')); t.appendChild(tr); return; }
+        var a = el('td'), e = el('button', '', '改'), d = el('button', '', '删');
+        e.addEventListener('click', function () { ed = { id: r.id, name: r.name, items: r.items.map(function (i) { return { name: i.name, qty: i.qty, unit: i.unit }; }) }; drawEd(); });
+        d.addEventListener('click', function () {
+          if (!confirm('删除配方 ' + r.name + '？\n（以前已经记录的格子不会变）')) return;
+          data.recipes = data.recipes.filter(function (x) { return x.id !== r.id; }); save(); drawRecipes();
+        });
+        a.style.whiteSpace = 'nowrap'; a.appendChild(e); a.appendChild(d); tr.appendChild(a); t.appendChild(tr);
+      });
+      box.appendChild(t);
+    }
+  }
+  function drawEd(msg) {
+    var box = $('recEd'); box.innerHTML = ''; if (!ed) return;
+    box.appendChild(el('h3', '', ed.id ? '改配方' : '新配方'));
+    var n = el('input'); n.type = 'text'; n.value = ed.name; n.placeholder = '配方编号 / 名字，例如 14-8 或 S2'; n.style.width = '100%'; n.style.marginBottom = '8px'; n.id = 'edName';
+    n.addEventListener('input', function () { ed.name = n.value; }); box.appendChild(n);
+    ed.items.forEach(function (it, i) {
+      var row = el('div', 'it'), a = el('input'), q = el('input'), u = el('select'), x = el('button', '', '✕');
+      a.type = 'text'; a.placeholder = '药水名字'; a.value = it.name; a.addEventListener('input', function () { it.name = a.value; });
+      q.type = 'number'; q.placeholder = '份量'; q.value = it.qty; q.min = 0; q.step = 'any'; q.addEventListener('input', function () { it.qty = q.value; });
+      UNITS.forEach(function (un) { var o = el('option', '', un); o.value = un; u.appendChild(o); }); u.value = it.unit; u.addEventListener('change', function () { it.unit = u.value; });
+      x.addEventListener('click', function () { ed.items.splice(i, 1); drawEd(); });
+      row.appendChild(a); row.appendChild(q); row.appendChild(u); row.appendChild(x); box.appendChild(row);
+    });
+    var add = el('button', 'btn2', '＋ 加药水'), sv = el('button', 'btn2', '✔ 保存配方'), ca = el('button', 'btn2', '取消');
+    sv.style.background = '#16a34a'; sv.style.color = '#fff'; sv.id = 'edSave'; add.id = 'edAdd';
+    add.addEventListener('click', function () { ed.items.push({ name: '', qty: '', unit: 'ml' }); drawEd(); });
+    ca.addEventListener('click', function () { ed = null; drawEd(); });
+    sv.addEventListener('click', saveRecipe);
+    var l = el('div', 'line'); l.appendChild(add); l.appendChild(sv); l.appendChild(ca); box.appendChild(l);
+    box.appendChild(el('div', 'err', msg || ''));
+  }
+  function saveRecipe() {
+    var name = ed.name.trim(), items = ed.items.filter(function (i) { return String(i.name).trim() || String(i.qty).trim(); });
+    var err = '';
+    if (!name) err = '请填配方编号 / 名字。';
+    else if (data.recipes.some(function (r) { return r.id !== ed.id && r.name.toLowerCase() === name.toLowerCase(); })) err = '「' + name + '」已经有了。';
+    else if (items.some(function (i) { return !String(i.name).trim() || !(+i.qty > 0); })) err = '每种药水都要有名字和大过 0 的份量。';
+    if (err) { drawEd(err); return; }
+    var clean = items.map(function (i) { return { name: String(i.name).trim(), qty: +i.qty, unit: i.unit }; });
+    if (ed.id) { var r = data.recipes.filter(function (x) { return x.id === ed.id; })[0]; r.name = name; r.items = clean; }
+    else data.recipes.push({ id: uid('rec'), name: name, items: clean });
+    ed = null; save(); drawRecipes(); drawEd();
+  }
+  $('rec').addEventListener('click', function () { ed = null; drawRecipes(); drawEd(); show('ovRec', true); });
+  $('recNew').addEventListener('click', function () { ed = { id: null, name: '', items: [{ name: '', qty: '', unit: 'ml' }] }; drawEd(); $('edName').focus(); });
+  $('recClose').addEventListener('click', function () { show('ovRec', false); });
+
+  // ================= sticker (same design as Chemical Mixing POS) =================
+  var STK_CSS = '.stkwrap{max-width:420px;margin:0 auto;container-type:inline-size}' +
+    '.stk{width:100%;aspect-ratio:1/1;background:#fff;color:#000;border:.5cqw solid #000;padding:3cqw;font-family:Arial,Helvetica,sans-serif;overflow:hidden;display:flex;flex-direction:column;gap:1.5cqw}' +
+    '.stk h3{margin:0;font-size:6.4cqw;line-height:1.1;color:#000}' +
+    '.stk .mid{display:flex;justify-content:space-between;gap:2cqw;align-items:center}' +
+    '.stk .meta{font-size:3.3cqw;line-height:1.5}' +
+    '.stk .pics{display:flex;gap:1.5cqw}' +
+    '.stk .pc{width:19cqw;text-align:center;border:.4cqw solid #bbb;font-size:2.8cqw;color:#888}' +
+    '.stk .pc.on{border:1.2cqw solid #000;color:#000}' +
+    '.stk .pc img{width:14cqw;height:14cqw;display:block;margin:.5cqw auto 0}' +
+    '.stk table{width:100%;border-collapse:collapse;font-size:3.7cqw}' +
+    '.stk th,.stk td{border:.3cqw solid #000;padding:.8cqw 1.5cqw;text-align:left}' +
+    '.stk th{background:#e6e6e6;font-size:2.8cqw}' +
+    '.stk th{text-transform:uppercase;font-weight:900}' +
+    '.stk td:not(:first-child),.stk th:not(:first-child){text-align:right;font-weight:700}' +
+    '.stk col.c1{width:38%}.stk col.c2,.stk col.c3{width:31%}' +
+    '.stk .nt{font-size:3cqw;font-style:italic}' +
+    '.stk .ft{margin-top:auto;text-align:right;font-weight:700;font-size:4cqw}';
+  (function () { var st = document.createElement('style'); st.textContent = STK_CSS; document.head.appendChild(st); })();
+  var STK_ROWS = 6, STK_FOOT = 'বড়টা আগে, ছোটটা পরে';
+  function icon(z, on) {
+    var g = on ? '#2e9e4f' : '#b5b5b5', gr = on ? '#8a5a2b' : '#9a9a9a', bg = on ? '#ffffff' : '#e4e4e4';
+    function pair(y) { return '<path d="M50 ' + y + ' Q30 ' + (y - 2) + ' 22 ' + (y - 20) + ' Q42 ' + (y - 18) + ' 50 ' + y + 'Z"/><path d="M50 ' + y + ' Q70 ' + (y - 2) + ' 78 ' + (y - 20) + ' Q58 ' + (y - 18) + ' 50 ' + y + 'Z"/>'; }
+    var plant = z === 'LARGE'
+      ? '<path d="M50 84V30" stroke="' + g + '" stroke-width="4"/>' + pair(74) + pair(58) + pair(42) + '<path d="M50 34 Q40 22 50 8 Q60 22 50 34Z"/>'
+      : '<path d="M50 84V54" stroke="' + g + '" stroke-width="4"/>' + pair(72) + '<ellipse cx="50" cy="46" rx="5" ry="10"/>';
+    return 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="' + bg + '"/><g fill="' + g + '">' + plant + '</g><rect x="10" y="84" width="80" height="7" fill="' + gr + '"/></svg>');
+  }
+  function stickerHTML(j) {
+    var sn = j.e.recipe, size = j.e.size, basis = sn.basis || BASIS, w = j.e.water;
+    var rows = sn.items.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td>' + i.qty + ' ' + esc(i.unit) + '</td><td>' + nf(i.qty * w / basis) + ' ' + esc(i.unit) + '</td></tr>'; }).join('');
+    for (var n = sn.items.length; n < STK_ROWS; n++) rows += '<tr><td>&nbsp;</td><td></td><td></td></tr>';
+    return '<div class="stkwrap"><div class="stk"><h3>' + esc(sn.name) + '</h3>' +
+      '<div class="mid"><div class="meta"><b>Plot:</b> ' + dash(j.row.plot) + '<br><b>Date:</b> ' + dash(j.date) + '<br><b>Mixed by:</b> ' + dash(j.e.emp) + '</div>' +
+      '<div class="pics">' + ['LARGE', 'SMALL'].map(function (z) { var on = size === z; return '<div class="pc' + (on ? ' on' : '') + '"><img alt="' + z + '" src="' + icon(z, on) + '"><b>' + z + '</b></div>'; }).join('') + '</div></div>' +
+      '<table><colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup><tr><th>CHEMICAL</th><th>PER ' + basis + ' L WATER</th><th>FOR ' + nf(w) + ' L</th></tr>' + rows + '</table>' +
+      (j.e.note ? '<div class="nt">' + esc(j.e.note) + '</div>' : '') + '<div class="ft">' + esc(STK_FOOT) + '</div></div></div>';
+  }
+  // one print job = many 100 x 100 mm pages, one sticker per page
+  function stickerDoc(inner, auto) {
+    return '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Stickers 100x100 mm</title><style>@page{size:100mm 100mm;margin:0}html,body{margin:0;padding:0;width:100mm;background:#fff}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      STK_CSS.replace(/cqw/g, 'mm') + '.stkwrap{width:100mm;height:100mm;max-width:none;container-type:normal;overflow:hidden;break-after:page;page-break-after:always}.stkwrap:last-of-type{break-after:auto;page-break-after:auto}.stk{width:100mm;height:100mm;aspect-ratio:auto}</style></head><body>' +
+      inner + (auto ? "<script>addEventListener('load',function(){setTimeout(function(){print()},400)})<\/script>" : '') + '</body></html>';
+  }
+  var jobs = [], off = {};
+  function jobsFor(dateIso) {
+    var out = [];
+    data.rows.forEach(function (row) {
+      entriesOf(dateIso + '|' + row.id).forEach(function (e, i) { if (e.recipe) out.push({ k: dateIso + '|' + row.id + '#' + i, row: row, date: dateIso, e: e }); });
+    });
+    return out;
+  }
+  function drawStk() {
+    var d = $('skDate').value; jobs = d ? jobsFor(d) : [];
+    var box = $('skPrev'); box.innerHTML = ''; $('skErr').textContent = '';
+    jobs.forEach(function (j) {
+      var l = el('label', off[j.k] ? '' : 'on'), cb = el('input'); cb.type = 'checkbox'; cb.checked = !off[j.k];
+      cb.addEventListener('change', function () { if (cb.checked) delete off[j.k]; else off[j.k] = 1; l.classList.toggle('on', cb.checked); count(); });
+      l.appendChild(cb); l.appendChild(document.createTextNode(' ' + j.row.plot + ' · ' + j.e.recipe.name + (j.e.printed ? '  🖨 已印 ' + j.e.printed + ' 次' : '')));
+      var p = el('div'); p.innerHTML = stickerHTML(j); p.style.marginTop = '5px'; l.appendChild(p); box.appendChild(l);
+    });
+    count();
+  }
+  function chosen() { return jobs.filter(function (j) { return !off[j.k]; }); }
+  function count() {
+    var n = chosen().length;
+    $('skInfo').textContent = jobs.length ? '这一天有 ' + jobs.length + ' 个药水组合，已选 ' + n + ' 张。' : '这一天还没有选药水组合。';
+    $('skPrint').textContent = '🖨 一次打印 ' + n + ' 张贴纸'; $('skPrint').disabled = !n;
+  }
+  function printViaFrame(html) {
+    var f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+    document.body.appendChild(f); f.srcdoc = html;
+    f.onload = function () { setTimeout(function () { f.contentWindow.focus(); f.contentWindow.print(); setTimeout(function () { f.remove(); }, 60000); }, 300); };
+  }
+  $('stk').addEventListener('click', function () { off = {}; $('skDate').value = iso(new Date()); drawStk(); show('ovStk', true); });
+  $('skDate').addEventListener('change', function () { off = {}; drawStk(); });
+  $('skAll').addEventListener('click', function () { off = {}; drawStk(); });
+  $('skNone').addEventListener('click', function () { jobs.forEach(function (j) { off[j.k] = 1; }); drawStk(); });
+  $('skClose').addEventListener('click', function () { show('ovStk', false); render(); });
+  $('skPrint').addEventListener('click', function () {
+    var list = chosen(); if (!list.length) return;
+    var inner = list.map(stickerHTML).join('');
+    // same method as the POS "Method 3": open the stickers in their own tab and print there
+    var w = null;
+    try { w = window.open(URL.createObjectURL(new Blob([stickerDoc(inner, true)], { type: 'text/html' })), '_blank'); } catch (e) { w = null; }
+    if (!w) printViaFrame(stickerDoc(inner, false));
+    list.forEach(function (j) { j.e.printed = (j.e.printed || 0) + 1; });
+    save(); drawStk();
+    if (!w) $('skErr').textContent = '浏览器挡住了新分页，已改用这一页直接打印。';
+  });
+
+  // ================= monthly report =================
+  function drawReport() {
+    var m = $('rpMonth').value, box = $('rpBody'); box.innerHTML = ''; if (!m) return;
+    var tot = {}, trial = [], water = 0, sets = 0, emps = {};
+    Object.keys(data.cells).sort().forEach(function (k) {
+      var date = k.split('|')[0], rid = k.split('|')[1]; if (date.slice(0, 7) !== m) return;
+      var row = data.rows.filter(function (r) { return r.id === rid; })[0];
+      data.cells[k].forEach(function (e) {
+        if (!e.recipe) return;
+        sets++; water += e.water;
+        var ek = coreName(e.emp), w = emps[ek] || (emps[ek] = { name: e.emp, days: {}, sets: 0, water: 0 });
+        w.days[date] = 1; w.sets++; w.water += e.water;
+        if (e.recipe.blank) { trial.push([date, row ? row.plot : '', e.emp, itemsText(e.recipe.items), e.water + ' L']); return; }
+        e.recipe.items.forEach(function (i) {
+          var liquid = i.unit === 'ml' || i.unit === 'L', base = +i.qty * (i.unit === 'L' || i.unit === 'kg' ? 1000 : 1) * e.water / (e.recipe.basis || BASIS);
+          var key = i.name.toLowerCase() + '|' + (liquid ? 'v' : 'w'), t = tot[key] || (tot[key] = { name: i.name, liquid: liquid, base: 0, n: 0 });
+          t.base += base; t.n++;
+        });
+      });
+    });
+    box.appendChild(el('p', '', '这个月一共 ' + sets + ' 个药水组合，用水 ' + nf(water) + ' L。'));
+    function table(head, rows, numCols) {
+      var t = el('table', 'rp'), h = el('tr'); head.forEach(function (x) { h.appendChild(el('th', '', x)); }); t.appendChild(h);
+      rows.forEach(function (r) { var tr = el('tr'); r.forEach(function (x, i) { tr.appendChild(el('td', numCols.indexOf(i) >= 0 ? 'n' : '', x)); }); t.appendChild(tr); });
+      return t;
+    }
+    var keys = Object.keys(tot).sort();
+    box.appendChild(el('h3', '', '每种药水的用量'));
+    if (!keys.length) box.appendChild(el('p', 'hint', '这个月还没有记录。'));
+    else box.appendChild(table(['药水', '用量', '大约几包 / 瓶', '用了几次'], keys.map(function (k) {
+      var t = tot[k], big = t.base >= 1000, c = chemOf(t.name), pk2 = '—';
+      if (c && c.cap) { var cb = c.cap * (c.unit === 'L' || c.unit === 'kg' ? 1000 : 1); pk2 = nf(t.base / cb) + ' ' + c.type + '（' + c.cap + ' ' + c.unit + '）'; }
+      return [t.name, nf(big ? t.base / 1000 : t.base) + ' ' + (t.liquid ? (big ? 'L' : 'ml') : (big ? 'kg' : 'g')), pk2, String(t.n)];
+    }), [1, 2, 3]));
+    box.appendChild(el('h3', '', '每个工人打药的天数'));
+    var ws = Object.keys(emps).map(function (k) { var w = emps[k]; return [w.name, Object.keys(w.days).length, w.sets, w.water]; }).sort(function (a, b) { return b[1] - a[1] || b[2] - a[2]; });
+    if (!ws.length) box.appendChild(el('p', 'hint', '这个月还没有记录。'));
+    else box.appendChild(table(['工人', '打药天数', '药水组合', '用水'], ws.map(function (r) { return [r[0], r[1] + ' 天', String(r[2]), nf(r[3]) + ' L']; }), [1, 2, 3]));
+    box.appendChild(el('h3', '', '试新药记录（空的组合 · 不算进上面的用量）'));
+    if (!trial.length) box.appendChild(el('p', 'hint', '这个月没有试新药。'));
+    else box.appendChild(table(['日期', '地块', '打药的人', '药（每 200 L）', '水量'], trial, []));
+  }
+  $('rep').addEventListener('click', function () { $('rpMonth').value = iso(new Date()).slice(0, 7); drawReport(); show('ovRep', true); });
+  $('rpMonth').addEventListener('change', drawReport);
+  $('rpClose').addEventListener('click', function () { show('ovRep', false); });
+
+  // ================= toolbar =================
+  function go(n) { weekStart = addDays(weekStart, n * 7); render(); }
+  $('prev').addEventListener('click', function () { go(-1); });
+  $('next').addEventListener('click', function () { go(1); });
+  $('today').addEventListener('click', function () { weekStart = mondayOf(new Date()); render(); });
+  $('pick').addEventListener('change', function (e) {
+    var p = e.target.value.split('-'); if (p.length !== 3) return;
+    weekStart = mondayOf(new Date(+p[0], +p[1] - 1, +p[2])); render();
+  });
+  $('edit').addEventListener('click', function (e) {
+    editing = !editing; document.body.classList.toggle('editing', editing);
+    e.target.classList.toggle('on', editing); e.target.textContent = editing ? '✔ 改好了' : '✏️ 改工人/地块';
+    render();
+  });
+  $('addRow').addEventListener('click', function () {
+    var lastRow = data.rows[data.rows.length - 1];
+    data.rows.push({ id: uid('r'), name: lastRow ? lastRow.name : '', plot: '', date: '' });
+    save(); render();
+  });
+  $('print').addEventListener('click', function () { window.print(); });
+  $('exp').addEventListener('click', function () {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }));
+    a.download = 'chemical-set-record-backup-' + iso(new Date()) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  $('imp').addEventListener('change', function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var d = JSON.parse(r.result);
+        if (!valid(d)) throw 0;
+        if (!confirm('用备份档案取代现在全部的记录？')) return;
+        data = fix(d); save(); render();
+      } catch (err) { alert('这个档案不是有效的备份。'); }
+    };
+    r.readAsText(f); e.target.value = '';
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ['ovPick', 'ovRec', 'ovStk', 'ovRep'].forEach(function (i) { show(i, false); }); });
+
+  $('warn').style.display = canSave ? 'none' : 'block';
+  render();
+  if (!data.rows.length) { var ib = $('info'); ib.textContent = '这里还没有资料。请在旧的文件按「⬇ 备份」，然后在这里按「⬆ 还原」选那个备份档案。'; ib.style.display = 'block'; }
+  // offline: keep a copy of the page so it opens without internet; a refresh while online fetches the newest version
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+})();
+</script>
+</body>
+</html>
