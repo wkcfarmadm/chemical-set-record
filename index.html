@@ -132,6 +132,7 @@
   <button id="stk" class="big">🏷 打印整天贴纸</button>
   <span class="sp"></span>
   <span id="status"></span>
+  <button id="syncBtn" title="同步">🔄 同步：未设定</button>
   <button id="rep">📊 月报</button>
   <button id="rec">📋 配方表</button>
   <button id="edit">✏️ 改工人/地块</button>
@@ -181,6 +182,18 @@
   <div id="recList"></div>
   <div id="recEd"></div>
   <div class="acts"><button id="recNew">＋ 新配方</button><button id="recClose">关闭</button></div>
+</div></div>
+
+<!-- 同步设定 -->
+<div class="ov" id="ovSync"><div class="dlg">
+  <h2>🔄 同步设定</h2>
+  <p class="hint">填了之后，电脑和电话会看到同一份资料。没有网络时照常可以填，有网络时自动同步。每台机器只需要填一次。</p>
+  <h3>Web app URL（Google script 的网址）</h3>
+  <div class="line"><input type="text" id="syUrl" class="grow" placeholder="https://script.google.com/macros/s/…/exec"></div>
+  <h3>Access code（你在 script 里设的密码）</h3>
+  <div class="line"><input type="text" id="syCode" class="grow" autocomplete="off"></div>
+  <div class="err" id="syMsg"></div>
+  <div class="acts"><button class="go" id="sySave">✔ 保存并测试</button><button id="syNow">立即同步</button><button class="del" id="syOff">停止同步</button><button id="syClose">关闭</button></div>
 </div></div>
 
 <!-- 月报 -->
@@ -245,14 +258,15 @@
     } catch (e) { canSave = false; }
     return freshData();
   }
-  function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(data)); canSave = true; flash('已保存 ✓'); }
+  function saveLocal() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); canSave = true; }
     catch (e) { canSave = false; }
     $('warn').style.display = canSave ? 'none' : 'block';
   }
+  function save() { saveLocal(); if (canSave) flash('已保存 ✓'); scheduleSync(1200); }
   var ft;
   function flash(t) { var s = $('status'); s.textContent = t; clearTimeout(ft); ft = setTimeout(function () { s.textContent = ''; }, 1500); }
-  function uid(p) { return p + (data.nextId++); }
+  function uid(p) { data.nextId++; return p + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36); }
 
   function mondayOf(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
   function addDays(d, n) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() + n); return x; }
@@ -315,10 +329,10 @@
     data.posStamp = POS.stamp;
     return st;
   }
-  function uidOn(d, p) { return p + (d.nextId++); }
+  function uidOn(d, p) { return uid(p); }
   var posResult = importPos();
   if (posResult) {
-    save();
+    saveLocal();
     var box = $('info'), x = el('button', '', '知道了 ✕'); x.style.cssText = 'float:right;font-size:14px;padding:4px 10px;cursor:pointer';
     x.addEventListener('click', function () { box.style.display = 'none'; });
     box.appendChild(x);
@@ -804,6 +818,113 @@
   $('rpMonth').addEventListener('change', drawReport);
   $('rpClose').addEventListener('click', function () { show('ovRep', false); });
 
+  // ================= sync (offline-first; Google Sheet through an Apps Script web app) =================
+  // Every cell, note and list is one "unit". `shadow` = what the server had at our last sync. A unit that differs
+  // from its shadow is waiting to be sent. Last writer wins per unit.
+  var SKEY = 'csr_sync', SHKEY = 'csr_shadow';
+  var SY = readJson(SKEY, { url: '', code: '', rev: 0, init: false }), shadow = readJson(SHKEY, {});
+  var syncBusy = false, syncTimer = null, syncState = '', pendingRender = false, lastOk = '';
+  function readJson(k, def) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v || def; } catch (e) { return def; } }
+  function writeJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function unitsOf(d) {
+    var u = {};
+    u['meta:rows'] = JSON.stringify({ rows: d.rows });
+    u['meta:recipes'] = JSON.stringify({ recipes: d.recipes });
+    u['meta:chems'] = JSON.stringify({ chems: d.chems, emps: d.emps, posStamp: d.posStamp || '' });
+    Object.keys(d.cells).forEach(function (k) { u['cell:' + k] = JSON.stringify(d.cells[k]); });
+    Object.keys(d.notes).forEach(function (k) { u['note:' + k] = JSON.stringify(d.notes[k]); });
+    return u;
+  }
+  function applyUnit(key, value) {
+    var v = value == null ? null : JSON.parse(value), id = key.slice(key.indexOf(':') + 1);
+    if (key.indexOf('cell:') === 0) { if (v && v.length) data.cells[id] = v; else delete data.cells[id]; }
+    else if (key.indexOf('note:') === 0) { if (v) data.notes[id] = v; else delete data.notes[id]; }
+    else if (!v) return;
+    else if (key === 'meta:rows') data.rows = v.rows || [];
+    else if (key === 'meta:recipes') data.recipes = v.recipes || [];
+    else if (key === 'meta:chems') { data.chems = v.chems || []; data.emps = v.emps || []; data.posStamp = v.posStamp || data.posStamp; }
+  }
+  function dirtyKeys(units) {
+    var out = [], seen = {};
+    Object.keys(units).concat(Object.keys(shadow)).forEach(function (k) { if (seen[k]) return; seen[k] = 1; if ((units[k] || null) !== (shadow[k] || null)) out.push(k); });
+    return out;
+  }
+  function call(body) {
+    body.code = SY.code;
+    return fetch(SY.url, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) { var e = new Error((j && j.message) || 'Server error'); e.code = (j && j.error) || 'SERVER'; throw e; }
+      return j;
+    });
+  }
+  function setShadow(k, v) { if (v == null) delete shadow[k]; else shadow[k] = v; }
+  function renderSafe() {
+    var ae = document.activeElement;
+    if (ae && $('tbl').contains(ae) && (ae.isContentEditable || ae.tagName === 'INPUT')) pendingRender = true; else render();
+  }
+  $('tbl').addEventListener('focusout', function () { if (pendingRender) { pendingRender = false; setTimeout(render, 0); } });
+  function drawSync() {
+    var b = $('syncBtn'), n = SY.url ? dirtyKeys(unitsOf(data)).length : 0;
+    if (!SY.url) { b.textContent = '🔄 同步：未设定'; b.style.background = '#fff'; return; }
+    if (syncState === 'auth') { b.textContent = '⚠ 同步：密码不对'; b.style.background = '#fecaca'; }
+    else if (syncState === 'error') { b.textContent = '⚠ 同步出错'; b.style.background = '#fecaca'; }
+    else if (syncState === 'offline') { b.textContent = '📴 离线' + (n ? ' · ' + n + ' 项等同步' : ''); b.style.background = '#fde047'; }
+    else if (syncBusy || n) { b.textContent = '⏳ 同步中' + (n ? ' · ' + n + ' 项' : '…'); b.style.background = '#fde047'; }
+    else { b.textContent = '✔ 已同步' + (lastOk ? ' ' + lastOk : ''); b.style.background = '#bbf7d0'; }
+  }
+  function scheduleSync(ms) { drawSync(); if (!SY.url) return; clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, ms); }
+  function syncNow() {
+    if (!SY.url || syncBusy) return Promise.resolve();
+    syncBusy = true; drawSync();
+    var p = Promise.resolve();
+    if (!SY.init) {
+      // first sync on this device: if the server already has data it wins, so an empty device can never wipe it
+      p = call({ action: 'sync', since: 0, changes: [] }).then(function (r) {
+        r.changes.forEach(function (c) { applyUnit(c.key, c.value); setShadow(c.key, c.value); });
+        SY.init = true; SY.rev = r.rev; fix(data); saveLocal(); writeJson(SKEY, SY); writeJson(SHKEY, shadow);
+        if (r.changes.length) { $('info').style.display = 'none'; renderSafe(); }
+      });
+    }
+    return p.then(function () {
+      var sent = unitsOf(data), keys = dirtyKeys(sent);
+      return call({ action: 'sync', since: SY.rev, changes: keys.map(function (k) { return { key: k, value: sent[k] == null ? null : sent[k] }; }) }).then(function (r) {
+        var now = unitsOf(data), changed = false;
+        keys.forEach(function (k) { setShadow(k, sent[k]); });
+        r.changes.forEach(function (c) {
+          setShadow(c.key, c.value);
+          // only take the server's value where nothing was edited here while the request was on its way
+          if ((now[c.key] || null) === (sent[c.key] || null) && (c.value || null) !== (now[c.key] || null)) { applyUnit(c.key, c.value); changed = true; }
+        });
+        SY.rev = r.rev; writeJson(SKEY, SY); writeJson(SHKEY, shadow);
+        if (changed) { fix(data); saveLocal(); renderSafe(); }
+        var d = new Date(); lastOk = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); syncState = '';
+      });
+    }).catch(function (e) {
+      syncState = e.code === 'AUTH' || e.code === 'SETUP' ? 'auth' : e.code ? 'error' : 'offline';
+      if (e.code && $('ovSync').classList.contains('show')) $('syMsg').textContent = '⚠ ' + e.message;
+    }).then(function () {
+      syncBusy = false; drawSync();
+      if (!syncState && dirtyKeys(unitsOf(data)).length) scheduleSync(500);
+    });
+  }
+  setInterval(function () { if (SY.url && !document.hidden) syncNow(); }, 15000);
+  window.addEventListener('online', function () { syncNow(); });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) syncNow(); });
+  $('syncBtn').addEventListener('click', function () { $('syUrl').value = SY.url; $('syCode').value = SY.code; $('syMsg').textContent = ''; $('syMsg').style.color = ''; show('ovSync', true); });
+  $('syClose').addEventListener('click', function () { show('ovSync', false); });
+  $('sySave').addEventListener('click', function () {
+    var url = $('syUrl').value.trim(), code = $('syCode').value.trim(), m = $('syMsg');
+    m.style.color = '';
+    if (!/^https?:\/\//.test(url) || !code) { m.textContent = '请填 URL 和 access code。'; return; }
+    if (url !== SY.url) { SY.rev = 0; SY.init = false; shadow = {}; writeJson(SHKEY, shadow); }
+    SY.url = url; SY.code = code; writeJson(SKEY, SY); syncState = '';
+    m.textContent = '测试中…';
+    call({ action: 'ping' }).then(function () { return syncNow(); }).then(function () {
+      if (!syncState) { m.style.color = '#15803d'; m.textContent = '✔ 连接成功，已同步。'; }
+    }).catch(function (e) { m.textContent = '⚠ ' + (e.code ? e.message : '连不到。请检查 URL 和网络。'); syncState = e.code === 'AUTH' ? 'auth' : e.code ? 'error' : 'offline'; drawSync(); });
+  });
+  $('syNow').addEventListener('click', function () { $('syMsg').textContent = ''; syncNow(); });
+  $('syOff').addEventListener('click', function () { SY = { url: '', code: '', rev: 0, init: false }; shadow = {}; writeJson(SKEY, SY); writeJson(SHKEY, shadow); syncState = ''; drawSync(); show('ovSync', false); });
+
   // ================= toolbar =================
   function go(n) { weekStart = addDays(weekStart, n * 7); render(); }
   $('prev').addEventListener('click', function () { go(-1); });
@@ -843,11 +964,12 @@
     };
     r.readAsText(f); e.target.value = '';
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ['ovPick', 'ovRec', 'ovStk', 'ovRep'].forEach(function (i) { show(i, false); }); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') ['ovPick', 'ovRec', 'ovStk', 'ovRep', 'ovSync'].forEach(function (i) { show(i, false); }); });
 
   $('warn').style.display = canSave ? 'none' : 'block';
   render();
-  if (!data.rows.length) { var ib = $('info'); ib.textContent = '这里还没有资料。请在旧的文件按「⬇ 备份」，然后在这里按「⬆ 还原」选那个备份档案。'; ib.style.display = 'block'; }
+  drawSync(); if (SY.url) syncNow();
+  if (!data.rows.length && !SY.url) { var ib = $('info'); ib.textContent = '这里还没有资料。请按「🔄 同步」填同步设定；或者在旧的文件按「⬇ 备份」，然后在这里按「⬆ 还原」。'; ib.style.display = 'block'; }
   // offline: keep a copy of the page so it opens without internet; a refresh while online fetches the newest version
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
 })();
