@@ -102,6 +102,33 @@
     .bar h1 { display: none; } .bar button, .bar label.btn { font-size: 13px; padding: 7px 8px; }
     .ed { font-size: 11px; padding: 3px 1px; }
   }
+  /* ---- one page shows every plot ---- */
+  :root { --rh: 24px; --fs: 13px; }
+  .lbl-s, #menuBtn { display: none; }
+  .more { display: contents; }
+  .cell .short { display: none; }
+  body.fit .grid .cell { height: var(--rh); min-height: 0; overflow: hidden; padding: 0 3px; font-size: var(--fs); line-height: var(--rh); }
+  body.fit .cell .full { display: none; }
+  body.fit .cell .short { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.fit .cell .short .alt { font-size: calc(var(--fs) * .8); }
+  body.fit .cell .short b { font-size: inherit; }
+  @media (max-width: 1500px) and (min-width: 701px) { .bar h1 { display: none; } .bar button, .bar label.btn { font-size: 14px; padding: 7px 9px; } .bar { gap: 5px; } }
+  body.fit .grid tfoot .cell { height: calc(var(--rh) * 1.6); line-height: 1.15; overflow: auto; }
+  body.fit td.plot { font-size: var(--fs); padding: 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  body.fit td.plot .pd { float: right; display: inline; font-size: calc(var(--fs) * .8); margin-left: 3px; }
+  body.fit td.name { font-size: calc(var(--fs) * .78); line-height: 1.05; padding: 0 2px; }
+  body.fit td.name .nm { overflow: hidden; overflow-wrap: anywhere; }
+  body.fit .grid th { padding: 1px; font-size: calc(var(--fs) * .85); line-height: 1.2; }
+  body.fit .grid th div { display: inline; } body.fit .grid th .wd { font-size: var(--fs); margin-right: 3px; }
+  body.fit .head { margin-bottom: 2px; } body.fit .head .m { font-size: 13px; } body.fit .page { padding: 4px 0; } body.fit .wrap { padding: 4px 0; }
+  @media (max-width: 700px) {
+    :root { --wd: 118px; }
+    .lbl-l, .bar .sp, #status { display: none; } .lbl-s, #menuBtn { display: inline; }
+    .bar { gap: 4px; padding: 6px; } .bar input[type=date] { font-size: 13px; padding: 5px 2px; max-width: 128px; } .bar button { padding: 7px 9px; }
+    .more { display: none; }
+    body.menu .more { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; padding-top: 4px; }
+    body.menu #menuBtn { background: #fde047; color: #111; }
+  }
   @page { size: A4 landscape; margin: 6mm; }
   @media print {
     body { background: #fff; }
@@ -119,26 +146,35 @@
     td.name { font-size: 9px; }
     .grid th { font-size: 10px; padding: 1px; } .grid th .wd { font-size: 11px; }
     .head { margin-bottom: 3px; }
+    body.fit .grid .cell { height: auto; min-height: 15px; line-height: 1.05; overflow: visible; font-size: 10px; padding: 1px 2px; }
+    body.fit .cell .full { display: block; } body.fit .cell .short { display: none; }
+    body.fit .grid tfoot .cell { height: auto; min-height: 40px; }
+    body.fit td.plot { font-size: 10px; white-space: normal; padding: 1px 3px; } body.fit td.name { font-size: 9px; }
+    body.fit .grid th { font-size: 10px; } body.fit .grid th .wd { font-size: 11px; }
   }
 </style>
 </head>
 <body>
 <div class="bar">
   <h1>Chemical Set Record</h1>
-  <button id="prev">◀ 上一页</button>
-  <button id="today">本周</button>
-  <button id="next">下一页 ▶</button>
+  <button id="prev">◀<span class="lbl-l"> 上一页</span></button>
+  <button id="today">今天</button>
+  <button id="next"><span class="lbl-l">下一页 </span>▶</button>
   <input type="date" id="pick" title="跳去日期">
-  <button id="stk" class="big">🏷 打印整天贴纸</button>
+  <button id="stk" class="big">🏷<span class="lbl-l"> 打印整天贴纸</span><span class="lbl-s"> 贴纸</span></button>
   <span class="sp"></span>
   <span id="status"></span>
   <button id="syncBtn" title="同步">🔄 同步：未设定</button>
+  <button id="menuBtn">☰</button>
+  <span class="more" id="more">
+  <button id="fitBtn"></button>
   <button id="rep">📊 月报</button>
   <button id="rec">📋 配方表</button>
   <button id="edit">✏️ 改工人/地块</button>
   <button id="print">🖨 打印这页</button>
   <button id="exp">⬇ 备份</button>
   <label class="btn">⬆ 还原<input type="file" id="imp" accept=".json,application/json" hidden></label>
+  </span>
 </div>
 <div id="warn">⚠ 这个浏览器不能保存资料，关掉后会不见。请用 Chrome 或 Edge 打开。</div>
 <div id="info" style="display:none;background:#dcfce7;color:#14532d;padding:10px 12px;font-size:14px;white-space:pre-wrap"></div>
@@ -226,7 +262,7 @@
   var UNITS = ['ml', 'L', 'g', 'kg'];
   var BASIS = 200, DEF_WATER = 200, BLANK_ID = 'blank_s1';
 
-  var canSave = true, editing = false, weekStart = mondayOf(new Date());
+  var canSave = true, editing = false, endDay = dayOf(new Date());
   var data = load();
   function $(id) { return document.getElementById(id); }
 
@@ -268,6 +304,7 @@
   function flash(t) { var s = $('status'); s.textContent = t; clearTimeout(ft); ft = setTimeout(function () { s.textContent = ''; }, 1500); }
   function uid(p) { data.nextId++; return p + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36); }
 
+  function dayOf(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
   function mondayOf(d) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
   function addDays(d, n) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() + n); return x; }
   function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
@@ -343,13 +380,13 @@
 
   // ================= weekly page =================
   function render() {
-    var days = [], i, todayIso = iso(new Date());
+    var days = [], i, todayIso = iso(new Date()), weekStart = addDays(endDay, -6);
     for (i = 0; i < 7; i++) days.push(addDays(weekStart, i));
     var last = days[6];
     $('month').textContent = 'MONTH: ' + MON[weekStart.getMonth()] +
       (last.getMonth() !== weekStart.getMonth() ? ' / ' + MON[last.getMonth()] : '') + ' ' + last.getFullYear();
     $('range').textContent = weekStart.getDate() + '/' + (weekStart.getMonth() + 1) + ' – ' + last.getDate() + '/' + (last.getMonth() + 1);
-    $('pick').value = iso(weekStart);
+    $('pick').value = iso(endDay);
 
     var t = $('tbl'); t.innerHTML = '';
     var cg = el('colgroup');
@@ -362,7 +399,7 @@
     hr.appendChild(el('th', 'st1', 'Name')); hr.appendChild(el('th', 'st2', 'PLOT'));
     days.forEach(function (d, k) {
       var h = el('th', iso(d) === todayIso ? 'today' : '');
-      h.appendChild(el('div', 'wd', WD[k])); h.appendChild(el('div', '', String(d.getDate())));
+      h.appendChild(el('div', 'wd', WD[(d.getDay() + 6) % 7])); h.appendChild(el('div', '', d.getDate() + '/' + (d.getMonth() + 1)));
       hr.appendChild(h);
     });
     if (editing) hr.appendChild(el('th', '', ''));
@@ -387,7 +424,8 @@
       } else {
         if (first) {
           var span = 1; while (idx + span < data.rows.length && data.rows[idx + span].name === row.name) span++;
-          var nt = el('td', 'name st1', row.name.trim()); nt.rowSpan = span; tr.appendChild(nt);
+          var nt = el('td', 'name st1'), nm = el('div', 'nm', row.name.trim()); nt.rowSpan = span;
+          nm.style.maxHeight = 'calc(var(--rh) * ' + span + ' + ' + (span - 1) + 'px)'; nt.appendChild(nm); tr.appendChild(nt);
         }
         var pt = el('td', 'plot st2'); pt.appendChild(el('span', 'pd', row.date)); pt.appendChild(document.createTextNode(row.plot)); tr.appendChild(pt);
       }
@@ -434,31 +472,67 @@
     if (editing) fr.appendChild(el('td'));
     tf.appendChild(fr); t.appendChild(tf);
     var tc = t.querySelector('th.today'), wr = $('wrap');
-    if (tc && wr.scrollWidth > wr.clientWidth && lastScrollWeek !== iso(weekStart)) { lastScrollWeek = iso(weekStart); wr.scrollLeft = tc.offsetLeft - t.querySelector('th.st2').offsetLeft - t.querySelector('th.st2').offsetWidth; }
+    applyFit();
+    // phones: the chosen day is the last column, so start scrolled to the right end
+    if (wr.scrollWidth > wr.clientWidth && lastScrollWeek !== iso(endDay)) { lastScrollWeek = iso(endDay); wr.scrollLeft = wr.scrollWidth; }
   }
   var lastScrollWeek = '';
 
   function fillCell(c, list, row) {
-    c.textContent = '';
+    c.textContent = ''; c.removeAttribute('title');
     if (!list.length) return;
     var sets = list.filter(function (e) { return e.recipe; });
+    var uniq = function (a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); };
+    var alt = uniq(sets.map(function (e) { return e.emp; })).filter(function (n) { return n && !sameEmp(n, row.name); });
+    // short: set names only (plus a moved-day note), one line
+    var sh = el('div', 'short'), first = true;
+    list.forEach(function (e) {
+      var t = e.recipe ? e.recipe.name + (e.changed ? '*' : '') : e.note; if (!t) return;
+      if (!first) sh.appendChild(document.createTextNode(' / ')); first = false;
+      sh.appendChild(e.recipe ? el('b', '', t) : document.createTextNode(t));
+    });
+    if (alt.length) { sh.appendChild(document.createTextNode(' ')); sh.appendChild(el('span', 'alt', alt.join('/'))); }
+    // full: everything, as before
+    var f = el('div', 'full');
     list.forEach(function (e, i) {
-      if (i) c.appendChild(document.createTextNode(' / '));
-      if (e.recipe) c.appendChild(el('b', '', e.recipe.name + (e.changed ? '*' : '')));
-      if (e.note) c.appendChild(document.createTextNode((e.recipe ? ' ' : '') + e.note));
+      if (i) f.appendChild(document.createTextNode(' / '));
+      if (e.recipe) f.appendChild(el('b', '', e.recipe.name + (e.changed ? '*' : '')));
+      if (e.note) f.appendChild(document.createTextNode((e.recipe ? ' ' : '') + e.note));
     });
     // show what is inside when it is not the normal recipe (trial set, or chemicals swapped)
-    sets.forEach(function (e) { if (e.recipe.blank || e.changed) c.appendChild(el('div', 'items', e.recipe.name + ': ' + itemsText(e.recipe.items))); });
+    sets.forEach(function (e) { if (e.recipe.blank || e.changed) f.appendChild(el('div', 'items', e.recipe.name + ': ' + itemsText(e.recipe.items))); });
     if (sets.length) {
-      var uniq = function (a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); };
       var s = el('div', 'sub');
       s.appendChild(document.createTextNode(uniq(sets.map(function (e) { return e.water + ' L'; })).join(' / ') + ' · ' + uniq(sets.map(function (e) { return e.size === 'SMALL' ? 'S' : 'L'; })).join('/')));
-      var alt = uniq(sets.map(function (e) { return e.emp; })).filter(function (n) { return n && !sameEmp(n, row.name); });
       if (alt.length) { s.appendChild(document.createTextNode(' · ')); s.appendChild(el('span', 'alt', alt.join('/'))); }
       if (sets.every(function (e) { return e.printed; })) s.appendChild(document.createTextNode(' · 🖨'));
-      c.appendChild(s);
+      f.appendChild(s);
     }
+    c.appendChild(sh); c.appendChild(f);
+    c.title = f.innerText || f.textContent;
   }
+
+  // ================= one page: size the rows so every plot fits on the screen =================
+  var FIT = true; try { FIT = localStorage.getItem('csr_fit') !== '0'; } catch (e) {}
+  function applyFit() {
+    var on = FIT && !editing, root = document.documentElement;
+    document.body.classList.toggle('fit', on);
+    $('fitBtn').textContent = FIT ? '🔍 显示详细' : '📄 一页看完';
+    if (!on) return;
+    var t = $('tbl'), n = data.rows.length; if (!n) return;
+    var top = t.getBoundingClientRect().top + (window.scrollY || 0);
+    var avail = window.innerHeight - top - 14;
+    // header ≈ 1.3 rows, notes row = 1.6 rows, plus 1px border per row
+    var rh = Math.floor((avail - n - 4) / (n + 2.9));
+    rh = Math.max(15, Math.min(40, rh));
+    root.style.setProperty('--rh', rh + 'px');
+    root.style.setProperty('--fs', Math.max(10, Math.min(15, Math.round(rh * 0.58))) + 'px');
+  }
+  $('fitBtn').addEventListener('click', function () { FIT = !FIT; try { localStorage.setItem('csr_fit', FIT ? '1' : '0'); } catch (e) {} render(); });
+  $('menuBtn').addEventListener('click', function () { document.body.classList.toggle('menu'); applyFit(); });
+  $('more').addEventListener('click', function (e) { if (e.target.closest('button')) { document.body.classList.remove('menu'); setTimeout(applyFit, 0); } });
+  var fitT; window.addEventListener('resize', function () { clearTimeout(fitT); fitT = setTimeout(applyFit, 100); });
+  if (window.ResizeObserver) { var ro = new ResizeObserver(function () { applyFit(); }); ro.observe($('info')); ro.observe(document.querySelector('.bar')); }
 
   // ================= picker =================
   var pk = null;
@@ -864,6 +938,11 @@
   $('tbl').addEventListener('focusout', function () { if (pendingRender) { pendingRender = false; setTimeout(render, 0); } });
   function drawSync() {
     var b = $('syncBtn'), n = SY.url ? dirtyKeys(unitsOf(data)).length : 0;
+    if (window.matchMedia && matchMedia('(max-width: 700px)').matches) {
+      b.textContent = !SY.url ? '🔄' : syncState === 'auth' || syncState === 'error' ? '⚠' : syncState === 'offline' ? '📴' + (n ? n : '') : (syncBusy || n) ? '⏳' + (n ? n : '') : '✔';
+      b.style.background = !SY.url ? '#fff' : syncState === 'auth' || syncState === 'error' ? '#fecaca' : syncState === 'offline' || syncBusy || n ? '#fde047' : '#bbf7d0';
+      return;
+    }
     if (!SY.url) { b.textContent = '🔄 同步：未设定'; b.style.background = '#fff'; return; }
     if (syncState === 'auth') { b.textContent = '⚠ 同步：密码不对'; b.style.background = '#fecaca'; }
     else if (syncState === 'error') { b.textContent = '⚠ 同步出错'; b.style.background = '#fecaca'; }
@@ -926,13 +1005,13 @@
   $('syOff').addEventListener('click', function () { SY = { url: '', code: '', rev: 0, init: false }; shadow = {}; writeJson(SKEY, SY); writeJson(SHKEY, shadow); syncState = ''; drawSync(); show('ovSync', false); });
 
   // ================= toolbar =================
-  function go(n) { weekStart = addDays(weekStart, n * 7); render(); }
+  function go(n) { endDay = addDays(endDay, n * 7); render(); }
   $('prev').addEventListener('click', function () { go(-1); });
   $('next').addEventListener('click', function () { go(1); });
-  $('today').addEventListener('click', function () { weekStart = mondayOf(new Date()); render(); });
+  $('today').addEventListener('click', function () { endDay = dayOf(new Date()); render(); });
   $('pick').addEventListener('change', function (e) {
     var p = e.target.value.split('-'); if (p.length !== 3) return;
-    weekStart = mondayOf(new Date(+p[0], +p[1] - 1, +p[2])); render();
+    endDay = new Date(+p[0], +p[1] - 1, +p[2]); render();
   });
   $('edit').addEventListener('click', function (e) {
     editing = !editing; document.body.classList.toggle('editing', editing);
