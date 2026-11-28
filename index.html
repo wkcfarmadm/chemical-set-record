@@ -397,8 +397,8 @@
       if (!n) return;
       list.forEach(function (day, i) {
         var p = day.split('-'), due = iso(addDays(new Date(+p[0], +p[1] - 1, +p[2]), n)), next = list[i + 1];
-        // marked only if nothing was sprayed in between (an extra or early spray replaces it)
-        if (!next || next > due) out[due + '|' + row.id] = (+p[2]) + '/' + (+p[1]);
+        // only the latest spray gives a red day: any later spray (extra, early or late) replaces it
+        if (!next) out[due + '|' + row.id] = (+p[2]) + '/' + (+p[1]);
       });
     });
     return out;
