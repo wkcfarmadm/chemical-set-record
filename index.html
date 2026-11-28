@@ -34,6 +34,8 @@
   .grid th { background: #f3f4f6; font-size: 12px; padding: 3px 2px; }
   .grid th .wd { font-size: 14px; color: #1d4ed8; }
   .grid th.today, .grid td.today { background: #fef9c3; }
+  .grid td.due, .grid td.today.due { background: #fecaca; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .duehint { font-size: 11px; color: #b91c1c; font-weight: bold; }
   col.c-name { width: var(--wn); } col.c-plot { width: var(--wp); } col.c-act { width: 86px; }
   td.name { font-size: 11px; font-weight: bold; text-align: center; vertical-align: middle; padding: 2px; overflow-wrap: anywhere; }
   td.plot { font-size: 13px; font-weight: bold; padding: 3px 4px; vertical-align: middle; }
@@ -382,9 +384,30 @@
     box.style.display = 'block';
   }
 
+  // ================= next spray: last spray day + N days (light red) =================
+  // Worked out again from the record every time, so an extra spray, an early spray or a postponed one
+  // simply moves the mark: the next due day always counts from the latest spray before it.
+  var DEF_EVERY = 3, DUE = {};
+  function sprayed(k) { return entriesOf(k).some(function (e) { return e.recipe; }); }
+  function dueMap() {
+    var byRow = {}, out = {};
+    Object.keys(data.cells).forEach(function (k) { if (!sprayed(k)) return; var p = k.split('|'); (byRow[p[1]] || (byRow[p[1]] = [])).push(p[0]); });
+    data.rows.forEach(function (row) {
+      var n = row.every == null ? DEF_EVERY : row.every, list = (byRow[row.id] || []).sort();
+      if (!n) return;
+      list.forEach(function (day, i) {
+        var p = day.split('-'), due = iso(addDays(new Date(+p[0], +p[1] - 1, +p[2]), n)), next = list[i + 1];
+        // marked only if nothing was sprayed in between (an extra or early spray replaces it)
+        if (!next || next > due) out[due + '|' + row.id] = (+p[2]) + '/' + (+p[1]);
+      });
+    });
+    return out;
+  }
+
   // ================= weekly page =================
   function render() {
     var days = [], i, todayIso = iso(new Date()), weekStart = addDays(endDay, -6);
+    DUE = dueMap();
     for (i = 0; i < 7; i++) days.push(addDays(weekStart, i));
     var last = days[6];
     $('month').textContent = 'MONTH: ' + MON[weekStart.getMonth()] +
@@ -420,11 +443,14 @@
         ni.addEventListener('change', function () { row.name = ni.value.trim().toUpperCase(); save(); });
         wi.addEventListener('change', function () { var v = +wi.value; if (v > 0) row.water = v; else delete row.water; save(); });
         n.appendChild(ni); n.appendChild(wi); tr.appendChild(n);
-        var p = el('td', 'st2'), pi = el('input', 'ed'), di = el('input', 'ed');
+        var p = el('td', 'st2'), pi = el('input', 'ed'), di = el('input', 'ed'), ei = el('input', 'ed');
         pi.value = row.plot; pi.placeholder = '地块'; di.value = row.date; di.placeholder = '种植日期 例 27/10';
+        ei.type = 'number'; ei.min = 0; ei.value = row.every == null ? '' : row.every; ei.placeholder = '每几天打一次（' + DEF_EVERY + '）';
+        ei.title = '每几天打一次药。空白 = ' + DEF_EVERY + ' 天，0 = 不提醒';
+        ei.addEventListener('change', function () { var v = ei.value.trim(); if (v === '') delete row.every; else row.every = Math.max(0, Math.round(+v) || 0); save(); });
         pi.addEventListener('change', function () { row.plot = pi.value.trim(); save(); });
         di.addEventListener('change', function () { row.date = di.value.trim(); save(); });
-        p.appendChild(pi); p.appendChild(di); tr.appendChild(p);
+        p.appendChild(pi); p.appendChild(di); p.appendChild(ei); tr.appendChild(p);
       } else {
         if (first) {
           var span = 1; while (idx + span < data.rows.length && data.rows[idx + span].name === row.name) span++;
@@ -437,6 +463,7 @@
         var k = iso(d) + '|' + row.id, td = el('td', iso(d) === todayIso ? 'today' : '');
         var c = el('div', 'cell pick'); c.tabIndex = 0; c.dataset.k = k;
         fillCell(c, entriesOf(k), row);
+        if (DUE[k]) { td.classList.add('due'); td.title = '下一期打药（上一次 ' + DUE[k] + '）'; if (!c.firstChild) c.appendChild(el('div', 'duehint', '该打药')); }
         function open() { openPicker(iso(d), row); }
         c.addEventListener('click', open);
         c.addEventListener('keydown', function (e) {
@@ -982,7 +1009,8 @@
   }
   function call(body) {
     body.code = SY.code;
-    return fetch(SY.url, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); }).then(function (j) {
+    var ctl = window.AbortController ? new AbortController() : null, tm = ctl && setTimeout(function () { ctl.abort(); }, 20000);
+    return fetch(SY.url, { method: 'POST', body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined }).then(function (r) { clearTimeout(tm); return r.json(); }, function (e) { clearTimeout(tm); throw e; }).then(function (j) {
       if (!j || !j.ok) { var e = new Error((j && j.message) || 'Server error'); e.code = (j && j.error) || 'SERVER'; throw e; }
       return j;
     });
@@ -1107,8 +1135,9 @@
   drawSync(); if (SY.url) syncNow();
   if (!data.rows.length && !SY.url) { var ib = $('info'); ib.textContent = '这里还没有资料。请按「🔄 同步」填同步设定；或者在旧的文件按「⬇ 备份」，然后在这里按「⬆ 还原」。'; ib.style.display = 'block'; }
   // offline: keep a copy of the page so it opens without internet; a refresh while online fetches the newest version
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(function () {});
   drawClip();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   var dayKey = iso(new Date());
   function checkNewDay() {
     var t = iso(new Date()); if (t === dayKey) return;
