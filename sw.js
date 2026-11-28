@@ -1,7 +1,7 @@
 // Chemical Set Record - offline support.
 // Online: fetch the newest page (so a refresh picks up updates) and keep a copy.
 // Bad or no connection: if the network has not answered within 3 seconds, open the saved copy instead.
-var CACHE = 'csr-v5', FILES = ['./', 'index.html', 'manifest.json', 'icon.svg'];
+var CACHE = 'csr-v6', FILES = ['./', 'index.html', 'manifest.json', 'icon.svg'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));
 });
