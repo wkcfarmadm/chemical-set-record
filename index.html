@@ -86,7 +86,10 @@
   .tabs button { font-size: 16px; font-weight: bold; padding: 9px 14px; border-radius: 8px 8px 0 0; border: 2px solid #888; border-bottom: 0; background: #f3f4f6; cursor: pointer; }
   .tabs button.on { background: #fde047; border-color: #111; }
   .tabs button.add { border-style: dashed; color: #1d4ed8; }
-  .pick .items { font-size: 10px; color: #555; }
+  .pick .items { font-size: 11px; color: #444; line-height: 1.25; }
+  #clipBar { display: none; position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 15; background: #111; color: #fff; padding: 9px 12px; border-radius: 10px; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.4); max-width: 94vw; }
+  #clipBar b { color: #fde047; } #clipBar button { margin-left: 8px; font-size: 13px; padding: 4px 9px; cursor: pointer; }
+  .pick.copied { outline: 3px dashed #16a34a; outline-offset: -3px; }
   .rp { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 6px; }
   .rp th, .rp td { border: 1px solid #999; padding: 6px 8px; text-align: left; }
   .rp th { background: #f3f4f6; } .rp td.n { text-align: right; font-weight: bold; white-space: nowrap; }
@@ -122,7 +125,7 @@
   body.fit .grid th div { display: inline; } body.fit .grid th .wd { font-size: var(--fs); margin-right: 3px; }
   body.fit .head { margin-bottom: 2px; } body.fit .head .m { font-size: 13px; } body.fit .page { padding: 4px 0; } body.fit .wrap { padding: 4px 0; }
   @media (max-width: 700px) {
-    :root { --wd: 118px; }
+    :root { --wd: 165px; }
     .lbl-l, .bar .sp, #status { display: none; } .lbl-s, #menuBtn { display: inline; }
     .bar { gap: 4px; padding: 6px; } .bar input[type=date] { font-size: 13px; padding: 5px 2px; max-width: 128px; } .bar button { padding: 7px 9px; }
     .more { display: none; }
@@ -167,7 +170,6 @@
   <button id="syncBtn" title="同步">🔄 同步：未设定</button>
   <button id="menuBtn">☰</button>
   <span class="more" id="more">
-  <button id="fitBtn"></button>
   <button id="rep">📊 月报</button>
   <button id="rec">📋 配方表</button>
   <button id="edit">✏️ 改工人/地块</button>
@@ -176,6 +178,7 @@
   <label class="btn">⬆ 还原<input type="file" id="imp" accept=".json,application/json" hidden></label>
   </span>
 </div>
+<div id="clipBar"></div>
 <div id="warn">⚠ 这个浏览器不能保存资料，关掉后会不见。请用 Chrome 或 Edge 打开。</div>
 <div id="info" style="display:none;background:#dcfce7;color:#14532d;padding:10px 12px;font-size:14px;white-space:pre-wrap"></div>
 <div class="wrap" id="wrap">
@@ -189,6 +192,7 @@
 <!-- 选药水 -->
 <div class="ov" id="ovPick"><div class="dlg">
   <h2 id="pkTitle"></h2>
+  <div class="line" style="margin:6px 0"><button class="btn2" id="pkCopy">📋 复制这格</button><button class="btn2" id="pkPaste" style="background:#16a34a;color:#fff;border-color:#16a34a"></button></div>
   <p class="hint">一个格子可以有多过一个药水组合（例如 3-3 和 7-6）。每个组合印一张贴纸。</p>
   <div class="tabs" id="pkTabs"></div>
   <h3>1 · Chemical set 药水组合</h3>
@@ -435,7 +439,12 @@
         fillCell(c, entriesOf(k), row);
         function open() { openPicker(iso(d), row); }
         c.addEventListener('click', open);
-        c.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); open(); } });
+        c.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); open(); }
+          else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); copyCell(k, row, iso(d)); }
+          else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V') && CLIP) { e.preventDefault(); open(); $('pkPaste').click(); }
+        });
+        if (CLIP && CLIP.k === k) c.classList.add('copied');
         td.appendChild(c); tr.appendChild(td);
       });
       if (editing) {
@@ -500,7 +509,7 @@
       if (e.note) f.appendChild(document.createTextNode((e.recipe ? ' ' : '') + e.note));
     });
     // show what is inside when it is not the normal recipe (trial set, or chemicals swapped)
-    sets.forEach(function (e) { if (e.recipe.blank || e.changed) f.appendChild(el('div', 'items', e.recipe.name + ': ' + itemsText(e.recipe.items))); });
+    sets.forEach(function (e) { f.appendChild(el('div', 'items', e.recipe.name + (e.changed ? '*' : '') + ': ' + itemsText(e.recipe.items))); });
     if (sets.length) {
       var s = el('div', 'sub');
       s.appendChild(document.createTextNode(uniq(sets.map(function (e) { return e.water + ' L'; })).join(' / ') + ' · ' + uniq(sets.map(function (e) { return e.size === 'SMALL' ? 'S' : 'L'; })).join('/')));
@@ -513,11 +522,10 @@
   }
 
   // ================= one page: size the rows so every plot fits on the screen =================
-  var FIT = true; try { FIT = localStorage.getItem('csr_fit') !== '0'; } catch (e) {}
+  var FIT = false;   // one-page view switched off at the user's request (back to the detailed layout)
   function applyFit() {
     var on = FIT && !editing, root = document.documentElement;
     document.body.classList.toggle('fit', on);
-    $('fitBtn').textContent = FIT ? '🔍 显示详细' : '📄 一页看完';
     if (!on) return;
     var t = $('tbl'), n = data.rows.length; if (!n) return;
     var top = t.getBoundingClientRect().top + (window.scrollY || 0);
@@ -528,11 +536,38 @@
     root.style.setProperty('--rh', rh + 'px');
     root.style.setProperty('--fs', Math.max(10, Math.min(15, Math.round(rh * 0.58))) + 'px');
   }
-  $('fitBtn').addEventListener('click', function () { FIT = !FIT; try { localStorage.setItem('csr_fit', FIT ? '1' : '0'); } catch (e) {} render(); });
   $('menuBtn').addEventListener('click', function () { document.body.classList.toggle('menu'); applyFit(); });
   $('more').addEventListener('click', function (e) { if (e.target.closest('button')) { document.body.classList.remove('menu'); setTimeout(applyFit, 0); } });
   var fitT; window.addEventListener('resize', function () { clearTimeout(fitT); fitT = setTimeout(applyFit, 100); });
   if (window.ResizeObserver) { var ro = new ResizeObserver(function () { applyFit(); }); ro.observe($('info')); ro.observe(document.querySelector('.bar')); }
+
+  // ================= copy / paste a cell =================
+  var CLIP = readJson('csr_clip', null);
+  function clipName() { return CLIP ? CLIP.list.map(function (e) { return e.recipe.name + (e.changed ? '*' : ''); }).join(' / ') : ''; }
+  function drawClip() {
+    var b = $('clipBar'); b.innerHTML = '';
+    if (!CLIP) { b.style.display = 'none'; return; }
+    b.appendChild(document.createTextNode('📋 已复制 ')); b.appendChild(el('b', '', clipName()));
+    b.appendChild(document.createTextNode('（' + CLIP.plot + ' ' + CLIP.date.slice(8) + '/' + (+CLIP.date.slice(5, 7)) + '）· 点别的格子按「📥 贴上」'));
+    var x = el('button', '', '✕ 取消'); x.addEventListener('click', function () { setClip(null); render(); }); b.appendChild(x);
+    b.style.display = 'block';
+  }
+  function setClip(c) { CLIP = c; if (c) writeJson('csr_clip', c); else { try { localStorage.removeItem('csr_clip'); } catch (e) {} } drawClip(); }
+  function copyList(list, row, dateIso, k) {
+    var sets = list.filter(function (e) { return e.recipe; });
+    if (!sets.length) return false;
+    setClip({ k: k, plot: row.plot, rowName: row.name, date: dateIso, list: JSON.parse(JSON.stringify(sets)) });
+    return true;
+  }
+  function copyCell(k, row, dateIso) { if (copyList(entriesOf(k), row, dateIso, k)) { flash('已复制'); render(); } else flash('这格没有药水组合'); }
+  // what gets pasted: same sets and chemicals; worker follows the new row unless a stand-in sprayed it; water is re-shared
+  function pastedEntries(row) {
+    return JSON.parse(JSON.stringify(CLIP.list)).map(function (e) {
+      delete e.printed; delete e.posId;
+      if (!e.emp || sameEmp(e.emp, CLIP.rowName)) e.emp = row.name.trim();
+      return e;
+    });
+  }
 
   // ================= picker =================
   var pk = null;
@@ -574,11 +609,13 @@
     Object.keys(data.cells).forEach(function (c) { data.cells[c].forEach(function (x) { if (x.emp) names[x.emp] = 1; if (x.recipe) x.recipe.items.forEach(function (i) { chems[i.name] = 1; }); }); });
     data.emps.forEach(function (n) { names[n] = 1; }); data.chems.forEach(function (c) { chems[c.name] = 1; });
     fillList('empList', names); fillList('chemList', chems);
+    $('pkPaste').style.display = CLIP ? '' : 'none'; $('pkPaste').textContent = CLIP ? '📥 贴上 ' + clipName() : '';
     loadForm(); show('ovPick', true);
   }
   function fillList(id, obj) { var dl = $(id); dl.innerHTML = ''; Object.keys(obj).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); }); }
   function loadForm() {
     var e = cur();
+    $('pkErr').style.color = '';
     $('pkQ').value = ''; $('pkEmp').value = e.emp || ''; $('pkWater').value = e.water || ''; $('pkNote').value = e.note || ''; $('pkErr').textContent = '';
     drawTabs(); drawSets(); drawItems(); drawSize(); drawTotal();
   }
@@ -695,6 +732,26 @@
   $('pkDel').addEventListener('click', function () { pk.list.splice(pk.i, 1); if (!pk.list.length) pk.list.push(newEntry()); resplit(); pk.i = Math.min(pk.i, pk.list.length - 1); loadForm(); });
   $('pkClear').addEventListener('click', function () { delete data.cells[pk.k]; save(); show('ovPick', false); render(); });
   $('pkCancel').addEventListener('click', function () { show('ovPick', false); });
+  $('pkCopy').addEventListener('click', function () {
+    var out = collect(); if (!out) return;
+    if (!copyList(out, pk.row, pk.date, pk.k)) { $('pkErr').textContent = '这格还没有药水组合可以复制。'; return; }
+    $('pkErr').textContent = ''; show('ovPick', false); flash('已复制'); render();
+  });
+  $('pkPaste').addEventListener('click', function () {
+    if (!CLIP) return;
+    var have = pk.list.filter(function (e) { return e.recipe; }), add = pastedEntries(pk.row);
+    if (!have.length) {
+      // empty cell: paste and save straight away
+      pk.list = pk.list.filter(function (e) { return !e.recipe && !e.fresh && (e.note || '').trim(); }).concat(add);
+      resplit();
+      var out = collect(); if (!out) return;
+      data.cells[pk.k] = out; save(); show('ovPick', false); render(); flash('已贴上 ' + clipName());
+      return;
+    }
+    // cell already has sets: add the pasted ones as extra tabs, let the user check and press 保存
+    pk.list = have.concat(add); resplit(); pk.i = have.length; loadForm();
+    $('pkErr').style.color = '#15803d'; $('pkErr').textContent = '已加上 ' + clipName() + '，请检查水量后按「✔ 保存」。';
+  });
 
   // ================= recipes =================
   var ed = null;
@@ -1051,6 +1108,17 @@
   if (!data.rows.length && !SY.url) { var ib = $('info'); ib.textContent = '这里还没有资料。请按「🔄 同步」填同步设定；或者在旧的文件按「⬇ 备份」，然后在这里按「⬆ 还原」。'; ib.style.display = 'block'; }
   // offline: keep a copy of the page so it opens without internet; a refresh while online fetches the newest version
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(function () {});
+  drawClip();
+  var dayKey = iso(new Date());
+  function checkNewDay() {
+    var t = iso(new Date()); if (t === dayKey) return;
+    var wasToday = iso(endDay) === dayKey; dayKey = t;
+    if (wasToday) endDay = dayOf(new Date());
+    renderSafe();
+  }
+  setInterval(checkNewDay, 60000);
+  window.addEventListener('focus', checkNewDay);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkNewDay(); });
 })();
 </script>
 </body>
